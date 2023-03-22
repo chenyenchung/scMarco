@@ -1,0 +1,13 @@
+## Do not track R system files and Mac OS files
+.DS_Store
+.Rhistory
+.Rproj.user*
+*.Rproj
+
+## Do not track rsconnect-related files
+rsconnect/*
+
+## Do not track source data
+data/*
+int/*
+.Rproj.user
