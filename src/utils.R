@@ -1,6 +1,5 @@
-#!/usr/bin/env Rscript
 ConvertToWideFormat <- function(
-  mat_of_interest, formula = "gene ~ stage", value.var = "prob", stages
+    mat_of_interest, formula = "gene ~ stage", value.var = "prob", stages
 ) {
   #' Convert a long-format expression matrix
   #' (with cluster, gene, stage, expression probability)
@@ -42,7 +41,20 @@ ConvertToWideFormat <- function(
     }
   )
   names(widemat) <- names(mat_of_interest)
-    return(widemat)
+  return(widemat)
+}
+
+CheckFilterInputDb <- function(db, cut_off) {
+  #' This function examines the anticipated input variable type
+  #' for GetAllExpressedGenes() and GetAllExpressedClusters()
+
+  # Input type-checking
+  if (class(db) != "SQLiteConnection") {
+    stop("The input data (db) is expected to be a SQLiteConnection.")
+  }
+  if (!is.numeric(cut_off) | cut_off > 1 | cut_off < 0) {
+    stop("cut_off must be a number between 0 ~ 1.")
+  }
 }
 
 CheckFilterInput <- function(exp_mat, cut_off) {
@@ -56,57 +68,6 @@ CheckFilterInput <- function(exp_mat, cut_off) {
   if (!is.numeric(cut_off) | cut_off > 1 | cut_off < 0) {
     stop("cut_off must be a number between 0 ~ 1.")
   }
-}
-
-
-GetAllExpressedGenes <- function(
-  exp_mat, cut_off, stage = NULL, count = 1, stages
-) {
-  #' This function takes a long form expression matrix and returns a list
-  #' of expressed genes per cluster based on the cut off provided.
-  #' exp_mat: A data.frame (long form expression matrix)
-  #' cut_off: A numeric value between 0 and 1
-  #' stage: A Boolean vector of 6 items signifying selection of P15, 30, 40, 50,
-  #' 70, and Adult
-  #' count: The minimal number of stages for a gene to be expressed to be
-  #' returned (only effective when stage = NULL)
-
-  # Input type-checking
-  CheckFilterInput(exp_mat, cut_off)
-
-  # Removed un-expressed genes
-  exp_mat_exp <- exp_mat[exp_mat$prob >= cut_off, ]
-
-  # Get all genes expressed at certain stages
-  exp_gene <- tapply(
-    exp_mat_exp$gene,
-    exp_mat_exp$cluster,
-    unique
-  )
-
-  # If filter for specific stages
-  if (any(stage)) {
-    stage_choose <- stages[stage]
-    exp_mat_exp <- subset(exp_mat_exp, stage %in% stage_choose)
-    stage_num <- sum(stage)
-  }
-
-  # Otherwise filter for stage number
-  stage_num <- count
-
-    # Get all genes that passed the filter criteria for expression
-  filtered_exp_gene <- tapply(
-    exp_mat_exp$gene,
-    exp_mat_exp$cluster,
-    function(x) {
-      gene_occurrence <- table(x)
-      gene_pass <- names(gene_occurrence)[gene_occurrence >= stage_num]
-      return(gene_pass)
-    }
-  )
-
-
-  return(list(all = exp_gene, filtered = filtered_exp_gene))
 }
 
 GetAllExpressedClusters <- function(exp_mat, cut_off) {
@@ -130,12 +91,76 @@ GetAllExpressedClusters <- function(exp_mat, cut_off) {
   return(exp_cluster)
 }
 
+GetAllExpressedGenesDb <- function(
+    db, db_tbl, cut_off, sql_where, stage = NULL, count = 1, stages
+) {
+  #' This function takes a long form expression matrix and returns a list
+  #' of expressed genes per cluster based on the cut off provided.
+  #' exp_mat: A data.frame (long form expression matrix)
+  #' cut_off: A numeric value between 0 and 1
+  #' stage: A Boolean vector of 6 items signifying selection of P15, 30, 40, 50,
+  #' 70, and Adult
+  #' count: The minimal number of stages for a gene to be expressed to be
+  #' returned (only effective when stage = NULL)
+
+  # Input type-checking
+  CheckFilterInputDb(db, cut_off)
+
+  # Check if WHERE statement exists already
+  sql_where <- sql_where
+  if (sql_where == "") {
+    sql_where <- c()
+  }
+
+  # Removed un-expressed genes
+  sql_where <- c(sql_where, paste("prob >=", cut_off))
+  sql_where <- wherecat(sql_where)
+
+  # exp_mat_exp <- exp_mat[exp_mat$prob >= cut_off, ]
+  exp_mat_exp <- dbGetQuery(
+    db,
+    paste(
+      "SELECT * FROM", db_tbl, sql_where)
+  )
+
+  # Get all genes expressed at certain stages
+  exp_gene <- tapply(
+    exp_mat_exp$gene,
+    exp_mat_exp$cluster,
+    unique
+  )
+
+  # If filter for specific stages
+  if (any(stage)) {
+    stage_choose <- stages[stage]
+    exp_mat_exp <- subset(exp_mat_exp, stage %in% stage_choose)
+    stage_num <- sum(stage)
+  }
+
+  # Otherwise filter for stage number
+  stage_num <- count
+
+  # Get all genes that passed the filter criteria for expression
+  filtered_exp_gene <- tapply(
+    exp_mat_exp$gene,
+    exp_mat_exp$cluster,
+    function(x) {
+      gene_occurrence <- table(x)
+      gene_pass <- names(gene_occurrence)[gene_occurrence >= stage_num]
+      return(gene_pass)
+    }
+  )
+
+
+  return(list(all = exp_gene, filtered = filtered_exp_gene))
+}
+
 FindDistinctiveGenes <- function(
-  x,
-  idents,
-  max_presence = 1,
-  group = NA,
-  against_all = FALSE
+    x,
+    idents,
+    max_presence = 1,
+    group = NA,
+    against_all = FALSE
 ) {
   #' Return genes that are is expressed in fewer than [max_presence] clusters (
   #' each stage is counted as 1 presence).
@@ -256,7 +281,7 @@ FindDistinctiveGenes <- function(
 }
 
 FindDistinctiveGenesPerGroup <- function(
-  x, idents, max_presence = 1, group = NULL
+    x, idents, max_presence = 1, group = NULL
 ) {
   # If there's no group
   if (is.null(group)) {
@@ -275,134 +300,16 @@ FindDistinctiveGenesPerGroup <- function(
   per_group_table <- do.call(rbind, per_group)
 }
 
-
-# Convert cluster number to cluster label
-AnnotateCluster <- function(longmtx, annot_path, cluster_var = "cluster") {
-  #' Takes a long form expression matrix and convert the cluster column
-  #' with Felix's annotation table
-  #' longmtx: Take a long form expression matrix (a data.frame)
-  #' annot_path: File path to annotation table (a string pointing to a .xlsx)
-  #' cluster_var: Column name of the cluster labels (a string; default = "cluster)
-
-  # Load annotation table from Felix
-  annotable <- read_xlsx(annot_path, col_types = "text")
-
-  # Construct conversion table
-  conv_dict <- annotable[ , 2, drop = TRUE]
-  names(conv_dict) <- annotable[ , 1, drop = TRUE]
-  conv_dict <- conv_dict[names(conv_dict) != conv_dict]
-  names(conv_dict) <- as.character(as.integer(names(conv_dict)))
-
-  # Convert only if conversion key is present
-  # List the index of the entries pending conversion
-  present_and_convert <- longmtx[[cluster_var]] %in% names(conv_dict)
-
-  longmtx[[cluster_var]][present_and_convert] <- paste0(
-    conv_dict[longmtx[[cluster_var]][present_and_convert]],
-    " (", longmtx[[cluster_var]][present_and_convert], ")"
-  )
-
-  return(longmtx)
+vec2sqllist <- function(x) {
+  # Escape single quotes by making them double (SQL)
+  x <- gsub("'", "''", x)
+  capture_output <- capture.output(cat(paste0("'", x, "'"), sep = ","))
+  capture_output <- paste0("(", capture_output, ")")
+  return(capture_output)
 }
 
-FindOtherClusters <- function(x, expobj, cluster_of_interest, cut_off, top_n) {
-  #' FindOtherClusters() takes expressed genes that passed filtering and
-  #' find other clusters that also express these genes at any stages
-  #' x is a long-form mixture modeling matrix
-  #' expobj is the output from FilterPositiveStagePerUnique()
-  #' cluster is the cluster of interest
-
-  others <- subset(
-    x,
-    gene %in% expobj$feat$marker &
-      cluster != cluster_of_interest &
-      prob >= cut_off
-  )
-
-  # Count the number of other clusters expressing these genes and return
-  # the top N with fewest other clusters
-  top_features <- head(
-    sort(tapply(others$cluster, others$gene, function(x) length(unique(x)))), top_n
-  )
-
-  other_clust <- lapply(
-    names(top_features),
-    function(top_gene) {
-      unique(subset(others, gene %in% top_gene)$cluster)
-    }
-  )
-
-  return(list(
-    feat = names(top_features),
-    other_clusters = other_clust
-  ))
-}
-
-BuildTree <- function(
-  x, clusters, cut_off, stage_of_interest, exclude
-) {
-  #' This function generates a decision tree based on binarized expression
-  #' of a particular stage
-  #' x: A data.frame containing a long-form expression matrix
-  #' clusters: A character vector containing cluster labels of interest
-  #' cut_off: A numeric value between 0 - 1 defining the threshold for a gene
-  #' to be seen as expressed.
-  #' stage_of_interest: A character variable containing the stage of to be
-  #' analyzed
-  #' exclude: A character vector containing gene symbols that are excluded from
-  #' the analysis
-
-  # Binarize the expression
-  x$exp <- x$prob >= cut_off
-
-  # Subset the data per user's instruction
-  train_data <- subset(
-    x,
-    stage == stage_of_interest & !(gene %in% exclude)
-  )
-  train_data <- dcast(
-    data = train_data,
-    formula = cluster ~ gene,
-    value.var = "exp"
-  )
-
-  # Distinguish cluster labels of interest and others
-  train_data$label <- factor(
-    ifelse(
-      train_data$cluster %in% clusters,
-      train_data$cluster,
-      "Others"
-    )
-  )
-
-  # Build a minimal(?) tree with rpart
-  tree_fit <- rpart(
-    label ~ .,
-    data = train_data[ , -1], # Drop column "cluster"
-    method = "class",
-    control = list(
-      cp = 0, # Split the tree no matter how little the information gain
-      minsplit = 2, # Split any node that has more than two classes in it
-      minbucket = 1 # Allow only 1 class in a leaf (that's desired!)
-    ),
-    model = TRUE
-  )
-  return(tree_fit)
-}
-
-GetNodeGenes <- function(x) {
-  #' This function extracts the gene names that is used in a rpart tree
-  #' x: An rpart object
-
-  genes <- labels(x)
-
-  # Drop the root node
-  genes <- setdiff(genes, "root")
-
-  # Remove the splitting criteria
-  genes <- gsub(">.*", "", genes)
-  genes <- gsub("<.*", "", genes)
-  genes <- gsub("=.*", "", genes)
-
-  return(unique(genes))
+wherecat <- function(x) {
+  out <- paste(x, collapse = " AND ")
+  out <- paste("WHERE", out)
+  return(out)
 }

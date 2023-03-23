@@ -1,0 +1,17 @@
+title: "Marker Combo Selector"
+
+databases:
+  ozel_2021:
+    stages: ['P15', 'P30', 'P40', 'P50', 'P70', 'Adult']
+    path: 'int/oldb.sqlite'
+
+gene_list:
+  flybase_tf:
+    path: "data/flybase_tfs.txt"
+    label: "FlyBase TFs"
+  mimic:
+    path: "data/mimic_temp.txt"
+    label: "Available MiMIC/CRIMIC lines"
+  split_gal4:
+    path: "data/20220804_split_gal4.txt"
+    label: "Split-GAL4s in the lab"

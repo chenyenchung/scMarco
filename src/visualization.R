@@ -1,12 +1,29 @@
 #!/usr/bin/env Rscript
 source("./src/utils.R")
 
-OnPlot <- function(x, marker_tbl, idents, cut_off, stages) {
+OnPlot <- function(db, db_tbl, sql_where, marker_tbl, idents, cut_off, stages) {
   #' This function takes a list of expression matrices
   #' and plots on off plot based on the cut.off values provided
-  to_plot <- subset(
-    x,
-    gene %in% marker_tbl$distinct_gene & cluster %in% idents
+
+  # Check if WHERE statement exists already
+  sql_where <- sql_where
+  if (sql_where == "") {
+    sql_where <- c()
+  }
+
+  sql_where <- c(
+    sql_where,
+    paste(
+      "gene IN", vec2sqllist(marker_tbl$distinct_gene)
+    ),
+    paste(
+      "cluster IN", vec2sqllist(idents)
+    )
+  )
+  to_plot <- dbGetQuery(
+    db, paste(
+      "SELECT * FROM", db_tbl, wherecat(sql_where)
+    )
   )
 
   to_plot <- reshape2::melt(
@@ -48,114 +65,9 @@ OnPlot <- function(x, marker_tbl, idents, cut_off, stages) {
   return(p)
 }
 
-LinePlot <- function(
-  x, gene_to_plot, highlight_idents,
-  idents = NULL,
-  stages,
-  highlight_col = "#57068c",
-  lowlight_dim = 0.2,
-  ggobj = FALSE
-) {
-  #' This functions plot log-normalized expression overtime
-  #' x: A long form data.frame containing log-normalized expression
-  #' genes: A character vector containing the genes to plot
-  #' highlight_idents: A character vector containing the clusters to highlight
-  #' idents: A character vector containing the clusters to plot. All clusters
-  #' will be plotted if NULL
-  #' num_trend: A numeric value defining how many different gene expression
-  #' trend to be used to split the line plot.
-  #' highlight_col: A character value (hex color) defining the color of the
-  #' lines corresponding to the clusters of interest
-  #' lowlight_dim: A numeric value defining the alpha of all other clusters
-
-  if (!is.null(idents)) {
-    x <- subset(x, cluster %in% idents)
-  }
-
-  if (!gene_to_plot %in% x$gene) {
-    stop(paste0("Cannot find ", gene_to_plot))
-  }
-
-  # Only keep the gene of interest
-  gene_to_plot <- subset(x, gene == gene_to_plot)
-
-  # Set color panel for the clusters to highlight
-  highlight_palette <- ifelse(
-    unique(gene_to_plot$cluster) %in% highlight_idents, highlight_col, "black"
-  )
-  names(highlight_palette) <- unique(gene_to_plot$cluster)
-  highlight_alpha <- ifelse(
-    unique(gene_to_plot$cluster) %in% highlight_idents, 1, lowlight_dim
-  )
-  names(highlight_alpha) <- unique(gene_to_plot$cluster)
-
-  if (ggobj) {
-    gene_to_plot$hlcluster <- "Others"
-    gene_to_plot$hlcluster[gene_to_plot$cluster %in% highlight_idents] <-
-      gene_to_plot$cluster[gene_to_plot$cluster %in% highlight_idents]
-    gene_to_plot$hlcluster <- factor(
-      gene_to_plot$hlcluster,
-      levels = c(highlight_idents, "Others")
-    )
-    p <- ggplot(
-      gene_to_plot,
-      aes(x = stage, y = lognorm, group = cluster)
-    ) +
-      geom_line(aes(color = hlcluster, alpha = cluster)) +
-      scale_color_manual(
-        values = c(
-          viridisLite::viridis(n = length(highlight_idents)), "black"
-        )
-      ) +
-      scale_alpha_manual(values = highlight_alpha) +
-      scale_x_discrete(limits = stages,
-                       labels = stages) +
-      guides(alpha = "none") +
-      labs(
-        x = "",
-        y = "Log-normalized expression",
-        color = ""
-      ) +
-      theme_cowplot() +
-      theme(
-        strip.background = element_rect(fill = "white"),
-        strip.text = element_text(color = "white")
-      )
-
-    return(p)
-  }
-
-  # Plot it
-  p <- ggplot(
-    gene_to_plot,
-    aes(x = stage, y = lognorm, group = cluster)
-  ) +
-    geom_line(aes(color = cluster, alpha = cluster)) +
-    scale_color_manual(values = highlight_palette) +
-    scale_alpha_manual(values = highlight_alpha) +
-    scale_x_discrete(limits = stages,
-                     labels = stages) +
-    guides(color = "none", alpha = "none") +
-    labs(
-      x = "",
-      y = "Log-normalized expression"
-    ) +
-    theme_cowplot() +
-    theme(
-      legend.position = 'none',
-      strip.background = element_rect(fill = "white"),
-      strip.text = element_text(color = "white")
-    )
-
-
-  pinteract <- ggplotly(p, tooltip = "alpha")
-
-  return(pinteract)
-}
-
 SplitPlot <- function(
-    x, genes, cut_off, count = FALSE, plot_all = TRUE, stages
-    ) {
+    db, db_tbl, sql_where, genes, cut_off, count = FALSE, plot_all = TRUE, stages
+) {
   #' This function takes a list of expression matrices
   #' and plots on off plot based on the cut.off values provided
   #' x: A data.frame that is a long form exrpession matrix
@@ -170,16 +82,40 @@ SplitPlot <- function(
   # Floating point number inaccuracy tolerance
   tol <- 1e-6
 
-  # Only keep genes of interest
-  to_plot <- subset(
-    x,
-    gene %in% genes
+  # Check if WHERE statement exists already
+  sql_where <- sql_where
+  if (sql_where == "") {
+    sql_where <- c()
+  }
+
+  sql_where <- c(
+    sql_where,
+    paste(
+      "gene IN", vec2sqllist(genes)
+    )
+  )
+  to_plot <- dbGetQuery(
+    db, paste(
+      "SELECT * FROM", db_tbl, wherecat(sql_where)
+    )
   )
 
   to_plot$exp <- to_plot$prob >= cut_off
 
   # Find all clusters that at least express the given genes once
   all_clust <- unique(unlist(GetAllExpressedClusters(to_plot, cut_off)))
+
+  # Exit early if none of the selected genes are expressed
+  if (length(all_clust) == 0) {
+    p <- ggplot(
+      data.frame(message = "Sorry.\nNone of your selected genes is expressed")
+    ) +
+      geom_text(aes(label = message), x = 0.5, y = 0.5, size = 10) +
+      theme_void()
+    return(p)
+  }
+
+
   to_plot <- subset(
     to_plot,
     cluster %in% all_clust
@@ -193,7 +129,7 @@ SplitPlot <- function(
 
   # Get the cluster names to make sure every gene matrix
   # has the same order of clusters
-  row_order <- unique(as.vector(sapply(to_plot, function(x) x$cluster)))
+  row_order <- all_clust
 
   # Iteratively count the number of times a gene is positively detected
   coexp <- Reduce(
@@ -208,14 +144,15 @@ SplitPlot <- function(
         missing_clust <- setdiff(row_order, gene_mat$cluster)
 
         # By adding 0 for the missing clusters
+        stage_pad_0 <- as.list(rep(0, length(stages)))
+        names(stage_pad_0) <- stages
+
         if (length(missing_clust) != 0) {
           gene_mat <- rbind(
             gene_mat,
             data.frame(
-              cluster = row_order,
-              "24h" = 0,
-              "42h" = 0,
-              adult = 0,
+              cluster = missing_clust,
+              stage_pad_0,
               gene = gene_label,
               check.names = FALSE
             )
@@ -240,6 +177,7 @@ SplitPlot <- function(
     coexp[ , stages] == length(genes)
   )
   exp_row <- sort(exp_row, decreasing = FALSE)
+
 
   # Annotate the cluster labels
   coexp$cluster <- row_order
@@ -355,3 +293,121 @@ SplitPlot <- function(
   return(p)
 }
 
+LinePlot <- function(
+    db, db_tbl, sql_where, features, highlight_idents,
+    idents = NULL,
+    stages,
+    highlight_col = "#57068c",
+    lowlight_dim = 0.2,
+    ggobj = FALSE
+) {
+  #' This functions plot log-normalized expression overtime
+  #' x: A path to a SQLite database containing log-normalized average expression
+  #' db_tbl: Name of table containing log-normalized average expression
+  #' genes: A character vector containing the genes to plot
+  #' highlight_idents: A character vector containing the clusters to highlight
+  #' idents: A character vector containing the clusters to plot. All clusters
+  #' will be plotted if NULL
+  #' num_trend: A numeric value defining how many different gene expression
+  #' trend to be used to split the line plot.
+  #' highlight_col: A character value (hex color) defining the color of the
+  #' lines corresponding to the clusters of interest
+  #' lowlight_dim: A numeric value defining the alpha of all other clusters
+
+  # Check if WHERE statement exists already
+  sql_where <- sql_where
+  if (sql_where == "") {
+    sql_where <- c()
+  }
+
+  sql_where <- c(
+    sql_where,
+    paste(
+      "gene IN", vec2sqllist(features)
+    )
+  )
+
+  # Only keep the gene of interest
+  gene_to_plot <- dbGetQuery(
+    db, paste(
+      "SELECT * FROM", db_tbl, wherecat(sql_where)
+    )
+  )
+
+  if (!is.null(idents)) {
+    gene_to_plot <- subset(gene_to_plot, cluster %in% idents)
+  }
+
+  # Set color panel for the clusters to highlight
+  highlight_palette <- ifelse(
+    unique(gene_to_plot$cluster) %in% highlight_idents, highlight_col, "black"
+  )
+  names(highlight_palette) <- unique(gene_to_plot$cluster)
+  highlight_alpha <- ifelse(
+    unique(gene_to_plot$cluster) %in% highlight_idents, 1, lowlight_dim
+  )
+  names(highlight_alpha) <- unique(gene_to_plot$cluster)
+
+  if (ggobj) {
+    gene_to_plot$hlcluster <- "Others"
+    gene_to_plot$hlcluster[gene_to_plot$cluster %in% highlight_idents] <-
+      gene_to_plot$cluster[gene_to_plot$cluster %in% highlight_idents]
+    gene_to_plot$hlcluster <- factor(
+      gene_to_plot$hlcluster,
+      levels = c(highlight_idents, "Others")
+    )
+    p <- ggplot(
+      gene_to_plot,
+      aes(x = stage, y = lognorm, group = cluster)
+    ) +
+      geom_line(aes(color = hlcluster, alpha = cluster)) +
+      scale_color_manual(
+        values = c(
+          viridisLite::viridis(n = length(highlight_idents)), "black"
+        )
+      ) +
+      scale_alpha_manual(values = highlight_alpha) +
+      scale_x_discrete(limits = stages,
+                       labels = stages) +
+      guides(alpha = "none") +
+      labs(
+        x = "",
+        y = "Log-normalized expression",
+        color = ""
+      ) +
+      theme_cowplot() +
+      theme(
+        strip.background = element_rect(fill = "white"),
+        strip.text = element_text(color = "white")
+      )
+
+    return(p)
+  }
+
+  # Plot it
+  p <- ggplot(
+    gene_to_plot,
+    aes(x = stage, y = lognorm, group = cluster)
+  ) +
+    geom_line(aes(color = cluster, alpha = cluster)) +
+    scale_color_manual(values = highlight_palette) +
+    scale_alpha_manual(values = highlight_alpha) +
+    scale_x_discrete(limits = stages,
+                     labels = stages) +
+    guides(color = "none", alpha = "none") +
+    labs(
+      x = "",
+      y = "Log-normalized expression"
+    ) +
+    theme_cowplot() +
+    theme(
+      legend.position = 'none',
+      strip.background = element_rect(fill = "white"),
+      strip.text = element_text(color = "white")
+    )
+
+
+  pinteract <- ggplotly(p, tooltip = "alpha")
+
+  return(pinteract)
+}

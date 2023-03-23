@@ -7,22 +7,24 @@
 #
 library(shiny)
 library(yaml)
-library(data.table)
 library(ggplot2)
 library(reshape2)
 library(plotly)
 library(markdown)
 library(cowplot)
+library(DBI)
+library(RSQLite)
 options(ragg.max_dim = Inf)
 
-# TODO: Config-dependent interface
-# TODO: SQLite encapsulation of input
 
 config <- read_yaml("config.yaml")
-stages <- names(config$mixture_model_tbl)
 
-norm <- fread("int/lognorm.csv", data.table = FALSE)
-mm <- fread("int/probs.csv", data.table = FALSE)
+current_db <- config$databases$ozel_2021
+stages <- current_db$stages
+
+db <- dbConnect(RSQLite::SQLite(), current_db$path)
+mm_tbl <- "probs"
+gex_tbl <- "lognorm"
 
 source("src/utils.R")
 source("src/visualization.R")
@@ -40,7 +42,7 @@ gene_list <- vapply(
 
 ui <- fluidPage(
   # Application title
-  titlePanel("Marker Combo Selector"),
+  titlePanel(config[["title"]]),
 
   # Sidebar with a slider input for number of bins
   sidebarLayout(
@@ -55,7 +57,7 @@ ui <- fluidPage(
       selectInput(
         'clusters_of_interest',
         'Clusters of interest',
-        unique(mm$cluster),
+        dbGetQuery(db, paste("SELECT DISTINCT cluster FROM", mm_tbl)),
         multiple = TRUE
       ),
       sliderInput(
@@ -96,38 +98,49 @@ ui <- fluidPage(
 server <- function(input, output, session) {
 
   # Filter genes of interest from config file if necessary
-  mm_work <- reactive({
+  sql_where <- reactive({
     req(input$gene_group_to_use)
+
     if (input$gene_group_to_use == "All") {
-      return(mm)
+      return("")
     } else {
       active_filter <- names(gene_list)[gene_list == input$gene_group_to_use]
       gene_of_interest <- readLines(config[["gene_list"]][[active_filter]][["path"]])
-      working <- subset(mm, gene %in% gene_of_interest)
-      return(working)
+      query_sentence <- paste(
+        "gene IN", vec2sqllist(gene_of_interest)
+      )
+      return(query_sentence)
     }
   }
   )
 
   ##### Find distinct genes for given clusters
-  fd_genes <- find_distinct_server(
-    "fd_genes", stages, session,
-    mm_work, reactive({input$clusters_of_interest}), reactive({input$pos_cut})
-  )
-
-  ##### Plot line plot for log-normalized expression for a selected marker
-  lineplot <- lineplot_server(
-    "lplot", session, norm, stages,
-    mm_work, reactive({input$clusters_of_interest})
+  find_distinct_server(
+    "fd_genes", stages, session, db, mm_tbl,
+    sql_where, reactive({input$clusters_of_interest}), reactive({input$pos_cut})
   )
 
   ##### Plot coexpression plot for given genes
-  splitplot <- coexp_server(
-    "coexp", session, stages, mm,
-    mm_work, reactive(input$pos_cut)
+  coexp_server(
+    "coexp", session, stages, db, mm_tbl,
+    sql_where, reactive(input$pos_cut)
   )
 
+  ##### Plot line plot for log-normalized expression for a selected marker
+  lineplot_server(
+    "lplot", session, stages, db, gex_tbl,
+    sql_where, reactive({input$clusters_of_interest})
+  )
 }
 
 # Run the application
-shinyApp(ui = ui, server = server)
+shinyApp(
+  ui = ui,
+  server = server,
+  onStart = function() {
+    # Close connection to SQLite db when the app is stopped
+    onStop(
+      function() {dbDisconnect(db)}
+    )
+  }
+)

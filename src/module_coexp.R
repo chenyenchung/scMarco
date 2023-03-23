@@ -21,19 +21,29 @@ coexp_output <- function(id) {
 }
 
 coexp_server <- function(
-    id, parent_session, stages, full_mm,
+    id, parent_session, stages, db, db_tbl,
     # Reactive params
-    db, cut_off
+    sql_where, cut_off
 ) {
   moduleServer(
     id,
     function(input, output, session) {
       observe(
         {
+          # Generate SQL statement based on global filter condition
+          sql_where <- sql_where()
+          input_q <- ifelse(
+            sql_where == "",
+            paste("SELECT DISTINCT gene FROM", db_tbl),
+            paste("SELECT DISTINCT gene FROM", db_tbl, wherecat(sql_where))
+          )
+
           updateSelectizeInput(
             session,
             'split_genes',
-            choices = unique(db()$gene),
+            choices = dbGetQuery(
+              db, input_q
+            )[["gene"]],
             server = TRUE
           )
         }
@@ -43,7 +53,9 @@ coexp_server <- function(
         input$do_splitplot,
         {
           SplitPlot(
-            x = full_mm,
+            db = db,
+            db_tbl = db_tbl,
+            sql_where = sql_where(),
             genes = input$split_genes,
             cut_off = cut_off(),
             count = FALSE,

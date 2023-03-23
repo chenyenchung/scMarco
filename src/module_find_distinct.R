@@ -17,9 +17,9 @@ find_distinct_output <- function(id) {
 }
 
 find_distinct_server <- function(
-    id, stages, parent_session,
+    id, stages, parent_session, db, db_tbl,
     # Reactive params
-    db, idents, cut_off
+    sql_where, idents, cut_off
     ) {
   moduleServer(
     id,
@@ -33,10 +33,11 @@ find_distinct_server <- function(
             function(x) {input[[x]]},
             FUN.VALUE = logical(1)
           )
-
-          exp_genes <- GetAllExpressedGenes(
-            db(),
+          exp_genes <- GetAllExpressedGenesDb(
+            db,
+            db_tbl,
             cut_off = cut_off(),
+            sql_where = sql_where(),
             stage = selected_stages,
             count = input$pos_num,
             stages = stages
@@ -65,7 +66,9 @@ find_distinct_server <- function(
         input$do_onplot,
         {
           OnPlot(
-            x = db(),
+            db = db,
+            db_tbl = db_tbl,
+            sql_where = sql_where(),
             marker_tbl = filmarkers(),
             idents = idents(),
             cut_off = cut_off(),
@@ -103,8 +106,7 @@ find_distinct_server <- function(
       observeEvent(input$do_onplot, {
         output$cond_dl <- renderUI({
           tagList(
-            ggdownload_UI(NS(id, "dl_fdist")),
-            actionButton(NS(id, "pass"), "Select genes")
+            ggdownload_UI(NS(id, "dl_fdist"))
           )
 
 

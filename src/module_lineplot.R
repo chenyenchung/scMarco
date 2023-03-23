@@ -26,20 +26,30 @@ lineplot_output <- function(id) {
 }
 
 lineplot_server <- function(
-    id, parent_session, norm, stages,
+    id, parent_session, stages, db, db_tbl,
     # Reactive params
-    db, idents
+    sql_where, idents
 ) {
   moduleServer(
     id,
     function(input, output, session) {
       observe(
         {
+          # Generate SQL statement based on global filter condition
+          sql_where <- sql_where()
+          input_q <- ifelse(
+            sql_where == "",
+            paste("SELECT DISTINCT gene FROM", db_tbl),
+            paste("SELECT DISTINCT gene FROM", db_tbl, wherecat(sql_where))
+          )
+
           # Update the gene selection panel for line plot
           updateSelectizeInput(
             session,
             inputId = "gene_of_interest",
-            choices = unique(db()$gene),
+            choices = dbGetQuery(
+              db, input_q
+            )[["gene"]],
             server = TRUE
           )
         }
@@ -49,8 +59,10 @@ lineplot_server <- function(
         input$do_lineplot,
         {
           LinePlot(
-            norm,
-            gene_to_plot = input$gene_of_interest,
+            db,
+            db_tbl,
+            sql_where = sql_where(),
+            features = input$gene_of_interest,
             highlight_idents = idents(),
             stages = stages,
             lowlight_dim = input$line_alpha,
@@ -85,8 +97,10 @@ lineplot_server <- function(
         filename = idents,
         payload = function() {
             LinePlot(
-              norm,
-              gene_to_plot = input$gene_of_interest,
+              db,
+              db_tbl,
+              sql_where = sql_where(),
+              features = input$gene_of_interest,
               highlight_idents = idents(),
               stages = stages,
               lowlight_dim = input$line_alpha,
