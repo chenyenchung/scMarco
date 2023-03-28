@@ -4,7 +4,7 @@ database_path: 'int/db.sqlite'
 
 databases:
   ozel_2021:
-    label: "Optic lobe: Ozel el al. (2021)"
+    label: "Optic lobe: Ozel et al. (2021)"
     stages: ['P15', 'P30', 'P40', 'P50', 'P70', 'Adult']
   ors:
     label: "ORNs: McLaughin et al. (2021)"
