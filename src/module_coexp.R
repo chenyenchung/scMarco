@@ -23,7 +23,7 @@ coexp_output <- function(id) {
 coexp_server <- function(
     id, parent_session, stages, db, db_tbl,
     # Reactive params
-    sql_where, cut_off
+    sql_where, cut_off, genes
 ) {
   moduleServer(
     id,
@@ -34,16 +34,14 @@ coexp_server <- function(
           sql_where <- sql_where()
           input_q <- ifelse(
             sql_where == "",
-            paste("SELECT DISTINCT gene FROM", db_tbl),
-            paste("SELECT DISTINCT gene FROM", db_tbl, wherecat(sql_where))
+            paste("SELECT DISTINCT gene FROM", db_tbl()),
+            paste("SELECT DISTINCT gene FROM", db_tbl(), wherecat(sql_where))
           )
 
           updateSelectizeInput(
             session,
             'split_genes',
-            choices = dbGetQuery(
-              db, input_q
-            )[["gene"]],
+            choices = genes(),
             server = TRUE
           )
         }
@@ -52,15 +50,21 @@ coexp_server <- function(
       splitplot <- eventReactive(
         input$do_splitplot,
         {
+          updateSelectizeInput(
+            session,
+            'split_genes',
+            choices = genes(),
+            server = TRUE
+          )
           SplitPlot(
             db = db,
-            db_tbl = db_tbl,
+            db_tbl = db_tbl(),
             sql_where = sql_where(),
             genes = input$split_genes,
             cut_off = cut_off(),
             count = FALSE,
             plot_all = TRUE,
-            stages = stages
+            stages = stages()
           )
         }
       )
@@ -110,6 +114,7 @@ coexp_server <- function(
         },
         width = 2500
       )
+      return(session)
     }
   )
 }

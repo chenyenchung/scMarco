@@ -10,7 +10,6 @@ OnPlot <- function(db, db_tbl, sql_where, marker_tbl, idents, cut_off, stages) {
   if (sql_where == "") {
     sql_where <- c()
   }
-
   sql_where <- c(
     sql_where,
     paste(
@@ -18,13 +17,25 @@ OnPlot <- function(db, db_tbl, sql_where, marker_tbl, idents, cut_off, stages) {
     ),
     paste(
       "cluster IN", vec2sqllist(idents)
-    )
+    ),
+    "type = 'prob'"
   )
   to_plot <- dbGetQuery(
     db, paste(
       "SELECT * FROM", db_tbl, wherecat(sql_where)
     )
   )
+
+  # Exit early if none of the selected genes are expressed
+  if (nrow(to_plot) == 0) {
+    p <- ggplot(
+      data.frame(message = "Sorry.\nThere is no distinctive gene found.")
+    ) +
+      geom_text(aes(label = message), x = 0.5, y = 0.5, size = 10) +
+      theme_void()
+    return(p)
+  }
+
 
   to_plot <- reshape2::melt(
     ConvertToWideFormat(to_plot, formula = "gene ~ stage", stages = stages),
@@ -40,7 +51,7 @@ OnPlot <- function(db, db_tbl, sql_where, marker_tbl, idents, cut_off, stages) {
   )
 
 
-  box_size <- 18 - 0.75 * length(unique(to_plot$cluster))
+  box_size <- 12 - 0.05 * length(unique(to_plot$cluster))
 
   p <- ggplot(to_plot, aes(x = stage, y = gene, fill = exp)) +
     geom_point(pch = 22, size = box_size) +
@@ -92,18 +103,20 @@ SplitPlot <- function(
     sql_where,
     paste(
       "gene IN", vec2sqllist(genes)
-    )
+    ),
+    "type = 'prob'"
   )
+
   to_plot <- dbGetQuery(
     db, paste(
       "SELECT * FROM", db_tbl, wherecat(sql_where)
     )
   )
 
-  to_plot$exp <- to_plot$prob >= cut_off
+  to_plot$exp <- to_plot$value > cut_off
 
   # Find all clusters that at least express the given genes once
-  all_clust <- unique(unlist(GetAllExpressedClusters(to_plot, cut_off)))
+  all_clust <- unique(to_plot$cluster[to_plot$exp])
 
   # Exit early if none of the selected genes are expressed
   if (length(all_clust) == 0) {
@@ -315,17 +328,13 @@ LinePlot <- function(
   #' lowlight_dim: A numeric value defining the alpha of all other clusters
 
   # Check if WHERE statement exists already
-  sql_where <- sql_where
-  if (sql_where == "") {
-    sql_where <- c()
-  }
-
-  sql_where <- c(
-    sql_where,
-    paste(
-      "gene IN", vec2sqllist(features)
+  if (sql_where != "") {
+    sql_where <- c(
+      sql_where, "type = 'lognorm'", paste("gene IN", vec2sqllist(features))
     )
-  )
+  } else {
+    sql_where <- c("type = 'lognorm'", paste("gene IN", vec2sqllist(features)))
+  }
 
   # Only keep the gene of interest
   gene_to_plot <- dbGetQuery(
@@ -358,7 +367,7 @@ LinePlot <- function(
     )
     p <- ggplot(
       gene_to_plot,
-      aes(x = stage, y = lognorm, group = cluster)
+      aes(x = stage, y = value, group = cluster)
     ) +
       geom_line(aes(color = hlcluster, alpha = cluster)) +
       scale_color_manual(
@@ -387,7 +396,7 @@ LinePlot <- function(
   # Plot it
   p <- ggplot(
     gene_to_plot,
-    aes(x = stage, y = lognorm, group = cluster)
+    aes(x = stage, y = value, group = cluster)
   ) +
     geom_line(aes(color = cluster, alpha = cluster)) +
     scale_color_manual(values = highlight_palette) +

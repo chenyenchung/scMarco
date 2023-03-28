@@ -28,7 +28,7 @@ lineplot_output <- function(id) {
 lineplot_server <- function(
     id, parent_session, stages, db, db_tbl,
     # Reactive params
-    sql_where, idents
+    sql_where, idents, genes
 ) {
   moduleServer(
     id,
@@ -36,20 +36,24 @@ lineplot_server <- function(
       observe(
         {
           # Generate SQL statement based on global filter condition
-          sql_where <- sql_where()
-          input_q <- ifelse(
-            sql_where == "",
-            paste("SELECT DISTINCT gene FROM", db_tbl),
-            paste("SELECT DISTINCT gene FROM", db_tbl, wherecat(sql_where))
+          this_sql_where <- sql_where()
+          if (this_sql_where != "") {
+            # Grow WHERE clause if there is already elements
+            this_sql_where <- c(this_sql_where, "type = 'lognorm'")
+          } else {
+            # Start from scratch if WHERE clause was empty
+            this_sql_where <- "type = 'lognorm'"
+          }
+
+          input_q <- paste(
+            "SELECT DISTINCT gene FROM", db_tbl(), wherecat(this_sql_where)
           )
 
           # Update the gene selection panel for line plot
           updateSelectizeInput(
             session,
             inputId = "gene_of_interest",
-            choices = dbGetQuery(
-              db, input_q
-            )[["gene"]],
+            choices = genes(),
             server = TRUE
           )
         }
@@ -60,11 +64,11 @@ lineplot_server <- function(
         {
           LinePlot(
             db,
-            db_tbl,
+            db_tbl(),
             sql_where = sql_where(),
             features = input$gene_of_interest,
             highlight_idents = idents(),
-            stages = stages,
+            stages = stages(),
             lowlight_dim = input$line_alpha,
             highlight_col = "red"
           )
@@ -98,11 +102,11 @@ lineplot_server <- function(
         payload = function() {
             LinePlot(
               db,
-              db_tbl,
+              db_tbl(),
               sql_where = sql_where(),
               features = input$gene_of_interest,
               highlight_idents = idents(),
-              stages = stages,
+              stages = stages(),
               lowlight_dim = input$line_alpha,
               ggobj = TRUE
             )
