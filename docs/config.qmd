@@ -1,0 +1,69 @@
+---
+title: "Configuration"
+---
+
+Once you have prepared a database, you need to point `scMarco` to it by
+editing a configuration file (`config.yaml`) that you can find in the
+directory.
+
+The configuration file would contain several parts which we will discuss
+in this section.
+
+Each part is defined by a name and a value separated by a colon(
+e.g., `name: value`), and indentation is used to show hierarchy. For example,
+`example_optic_lobe` sits under and belongs to `databases`, while `flybase_tf`
+is a part of `gene_list`.
+
+```yaml
+title: "scMarco"
+
+database_path: 'example/min_db.sqlite'
+
+databases:
+  example:
+    label: "Subset of optic lobe atlas from Ozel et al. (2021)"
+    stages: ['P15', 'P30', 'P40', 'P50', 'P70', 'Adult']
+  
+gene_list:
+  flybase_tf:
+    path: "data/flybase_tfs.txt"
+    label: "FlyBase TFs"
+  mimic:
+    path: "data/mimic_temp.txt"
+    label: "RMCE swappable gene-specific lines"
+```
+
+## `title`
+
+This defines the title that you will see when you run `scMarco`.
+
+## `database_path`
+
+This is the file path to the database you generated when you [preprocessed your
+dataset](preprocess.qmd). The path should be relative to the home directory
+of the app (e.g., if you have `scMarko` on your desktop (`~/Desktop/scmarko/`)
+and a database (`db.sqlite`) is stored in a subdirectory named `my_dbs`, you
+should set `database_path` to `my_dbs/db.sqlite`).
+
+## `databases`
+
+Under this part, each item (e.g., `example`) is a dataset. The items are the
+table names you set when you [preprocessed your
+dataset](preprocess.qmd).
+
+`label` defines how this dataset is referred to in the app. `stages` defines 
+the order of stages [^1].
+
+[^1]: `stages` is case sensitive and must contain the same values you have in
+the `stage` column in your database ([Also see](preprocess.qmd)).
+
+## `gene_list`
+
+There are tens of thousands of genes in a dataset, and oftentimes we are only
+interested in some of them. Only keeping the subset of genes helps with the
+efficiently of the app. You may curate and provide lists of gene symbols as `txt`
+files in which each line is a gene symbol.
+
+In `config.yaml`, you give a short name (e.g., `flybase_tf` and `mimic`) to 
+your list, and provide the relative path in `path` and how the list is referred
+to in the app in `label`.
