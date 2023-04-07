@@ -1,0 +1,136 @@
+---
+title: "Prepare Data"
+---
+
+If you have **average normalized expression** and **modeled expression probability** for each cluster, this section will demonstrate how to prepare them for visualization with `scMarco`.
+
+If you use [`Seurat`](https://satijalab.org/seurat/) to process your data, cluster average expression can be retrieved with [`AverageExpression()`](https://satijalab.org/seurat/reference/averageexpression) [^preprocess-1].
+
+[^preprocess-1]: Note that you need to set `return.seurat = TRUE` to get log-normalized average ([Also see](https://github.com/satijalab/seurat/issues/193)).
+
+This will render a data.frame where each row is a gene while each column is a cluster:
+
+```{r}
+# A subset of data retrieved from Ozel et al. (2021)
+lognorm <- read.csv(
+  "../../example/data/log_norm/Adult.csv",
+  row.names = 1,
+  check.names = FALSE
+)
+
+head(lognorm)
+```
+
+`scMarco` uses a slightly different organization: A data.frame with 4 columns:
+
+-   gene: Gene symbols or IDs
+-   cluster: Cluster names or IDs
+-   value: The value of average expression or expression probability
+-   stage: The stage or condition
+-   type: `lognorm` for average expression; `prob` for expression probability
+
+We can convert the above table with [`tidyr`](https://tidyr.tidyverse.org/):
+
+```{r}
+library(tidyr)
+
+# Since tidyr does not deal with row names, we need to keep genes as a column
+lognorm$gene <- row.names(lognorm)
+
+lognorm_pivot <- pivot_longer(
+  lognorm,
+  cols = -gene, # Do not pivot genes
+  values_to = "value",
+  names_to = "cluster"
+)
+
+head(lognorm_pivot)
+```
+
+Once the conversion is completed, we annotate the stage (`Adult`) and data type (`lognorm`):
+
+```{r}
+lognorm_pivot$stage <- "Adult"
+lognorm_pivot$type <- "lognorm"
+
+head(lognorm_pivot)
+```
+
+To preserve memory usage with a large dataset, `scMarco` stores data in a [`SQLite`](https://www.sqlite.org/index.html) database, but no worries -- this will just be two extra lines in `R`.
+
+To interact with `SQLite`, we need two extra packages: `DBI` and `RSQLite`.
+
+```{r}
+library(DBI)
+library(RSQLite)
+
+# This will create a new database if the file does not exist yet while
+# connect to it if it exists already.
+db <- dbConnect(SQLite(), "../../example/ex_db.sqlite")
+```
+
+`scMarco` supports dealing with multiple datasets as long as you give each of them a name. Here, we are going to call it `example_optic_lobe`.
+
+If this is a new database and the table does not exist in your database, we can create the table with `dbWriteTable()`.
+
+```{r}
+dbWriteTable(
+  conn = db, # The database you just opened/connected
+  name = "example_optic_lobe",
+  value = lognorm_pivot,
+  # Regular user does not need this option below.
+  # It is turned on to allow rebuilding the documentation without deleting
+  # previously generated examples.
+  overwrite = TRUE 
+)
+```
+
+Now, we have the average expression data in the database. Similar process can be done with expression probability:
+
+```{r}
+# A subset of data retrieved from Ozel et al. (2021)
+mm <- read.csv(
+  "../../example/data/mixture_model/Adult.csv",
+  row.names = 1,
+  check.names = FALSE
+)
+
+head(mm)
+```
+
+We convert and annotate the probability table as described above:
+
+```{r}
+# Since tidyr does not deal with row names, we need to keep genes as a column
+mm$gene <- row.names(mm)
+
+mm_pivot <- pivot_longer(
+  mm,
+  cols = -gene, # Do not pivot genes
+  values_to = "value",
+  names_to = "cluster"
+)
+
+mm_pivot$stage <- "Adult"
+mm_pivot$type <- "prob"
+
+head(mm_pivot)
+```
+
+To store expression probability to an existing table (`example_optic_lobe`) that we just created, we use `dbAppendTable()` instead to append data.
+
+```{r}
+dbAppendTable(
+  conn = db, # The database you just opened/connected
+  name = "example_optic_lobe",
+  value = mm_pivot
+)
+```
+
+Now, we have a database ready for `scMarko`. If you have multiple stages or conditions, you need to repeat the above process and append all data into the same table.
+
+Once we are done, we can close the connection to the database by `dbDisconnect()`.
+
+```{r}
+dbDisconnect(db)
+```
