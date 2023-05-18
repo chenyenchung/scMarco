@@ -211,8 +211,12 @@ server <- function(input, output, session) {
     }
   )
 
+  update_genelist <- reactive({
+    paste0(input$dataset, input$gene_group_to_use)
+  })
+
   current_genes <- eventReactive(
-    input$gene_group_to_use, {
+    update_genelist(), {
       if (input$gene_group_to_use == "All") {
         return(cache[['genes']][[current_tbl()]])
       } else {
