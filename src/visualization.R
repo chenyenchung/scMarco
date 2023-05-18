@@ -134,6 +134,7 @@ SplitPlot <- function(
     cluster %in% all_clust
   )
 
+
   # Split expression matrix by gene
   to_plot <- ConvertToWideFormat(
     to_plot, formula = "cluster ~ stage",
@@ -176,7 +177,7 @@ SplitPlot <- function(
 
         # Binarize gene expression probability
         prob_cols <- stages
-        return((1 - gene_mat[row_order, prob_cols]) < tol)
+        return((1 - gene_mat[row_order, prob_cols, drop = FALSE]) < tol)
       }
     )
   )
@@ -187,7 +188,7 @@ SplitPlot <- function(
   # Order the clusters by number of co-expressed clusters
   ## Get number of co-expression per cluster
   exp_row <- rowSums(
-    coexp[ , stages] == length(genes)
+    coexp[ , stages, drop = FALSE] == length(genes)
   )
   exp_row <- sort(exp_row, decreasing = FALSE)
 
