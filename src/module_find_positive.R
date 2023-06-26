@@ -4,7 +4,7 @@ find_pos_UI <- function(id, stages) {
       NS(id, "gene"),
       label = 'Which gene?',
       choices = NULL,
-      multiple = FALSE
+      multiple = TRUE
     ),
     sliderInput(
       NS(id, "pos_num"), "How many stages must the gene to be detected in?",

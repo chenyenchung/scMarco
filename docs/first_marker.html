@@ -140,7 +140,19 @@ ul.task-list li input[type="checkbox"] {
 <div id="quarto-sidebar-glass" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar,#quarto-sidebar-glass"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#what-scmarco-assumes" id="toc-what-scmarco-assumes" class="nav-link active" data-scroll-target="#what-scmarco-assumes"><span class="header-section-number">5.1</span> What <code>scMarco</code> assumes</a></li>
+  <li><a href="#sec-expressed" id="toc-sec-expressed" class="nav-link" data-scroll-target="#sec-expressed"><span class="header-section-number">5.2</span> Define <strong><em>expressed</em></strong></a>
+  <ul class="collapse">
+  <li><a href="#probability-threshold-to-be-considered-as-expressed" id="toc-probability-threshold-to-be-considered-as-expressed" class="nav-link" data-scroll-target="#probability-threshold-to-be-considered-as-expressed"><span class="header-section-number">5.2.1</span> <code>Probability threshold to be considered as expressed</code></a></li>
+  <li><a href="#how-many-stages-must-the-gene-to-be-detected-in" id="toc-how-many-stages-must-the-gene-to-be-detected-in" class="nav-link" data-scroll-target="#how-many-stages-must-the-gene-to-be-detected-in"><span class="header-section-number">5.2.2</span> <code>How many stages must the gene to be detected in?</code></a></li>
+  </ul></li>
+  <li><a href="#from-cluster-finding-the-first-marker-for-your-favorite-cluster" id="toc-from-cluster-finding-the-first-marker-for-your-favorite-cluster" class="nav-link" data-scroll-target="#from-cluster-finding-the-first-marker-for-your-favorite-cluster"><span class="header-section-number">5.3</span> <code>From cluster</code>: Finding the first marker for your favorite cluster</a></li>
+  </ul>
+</nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
@@ -162,8 +174,40 @@ ul.task-list li input[type="checkbox"] {
 
 </header>
 
+<section id="what-scmarco-assumes" class="level2" data-number="5.1">
+<h2 data-number="5.1" class="anchored" data-anchor-id="what-scmarco-assumes"><span class="header-section-number">5.1</span> What <code>scMarco</code> assumes</h2>
+<p>We imagine that a specific marker combination could be useful in two ways:</p>
+<ol type="1">
+<li><p>To specifically label a cluster so we know how they look like and where they locate <em>in vivo</em>.</p></li>
+<li><p>To distinguish subpopulations that share a known marker.</p></li>
+</ol>
+<p>In the first scenario, <code>scMarco</code> will provide a list of <strong>genes</strong> that are <strong>expressed</strong> and how many other clusters they are also detected in. In the second scenario, <code>scMarco</code> will provide a list of <strong>clusters</strong> that express the marker you selected.</p>
+<p>Both scenarios end up providing a list of clusters that we will select a second marker to help distinguish.</p>
+</section>
+<section id="sec-expressed" class="level2" data-number="5.2">
+<h2 data-number="5.2" class="anchored" data-anchor-id="sec-expressed"><span class="header-section-number">5.2</span> Define <strong><em>expressed</em></strong></h2>
+<p>Claiming a gene is expressed involves two cutoffs that must be decided:</p>
+<ol type="1">
+<li><p>How high the modeled probability must be? (e.g., Do I consider a gene that has an expression probability of 0.6 expressed?)</p></li>
+<li><p>(If there are multiple stages/conditions) In how many stages a gene must show expression probability above the threshold decided in (1)? (e.g., if I have 6 stages in my dataset, and a gene is only expressed in a cluster at 4 stages, do I consider this gene expressed in this cluster?)</p></li>
+</ol>
+<p><code>scMarco</code> provides two options corresponding to the two criteria:</p>
+<section id="probability-threshold-to-be-considered-as-expressed" class="level3" data-number="5.2.1">
+<h3 data-number="5.2.1" class="anchored" data-anchor-id="probability-threshold-to-be-considered-as-expressed"><span class="header-section-number">5.2.1</span> <code>Probability threshold to be considered as expressed</code></h3>
+<p>The slider set the threshold for expression probability for each stage. The expression probability must <strong>exceed</strong> this number to be considered as expressed.</p>
+</section>
+<section id="how-many-stages-must-the-gene-to-be-detected-in" class="level3" data-number="5.2.2">
+<h3 data-number="5.2.2" class="anchored" data-anchor-id="how-many-stages-must-the-gene-to-be-detected-in"><span class="header-section-number">5.2.2</span> <code>How many stages must the gene to be detected in?</code></h3>
+<p>This slider is provided by the <code>From cluster</code> and <code>From gene</code> tabs. When your dataset involves multiple stages/conditions, a gene will only be considered as expressed for a cluster when it is expressed in the cluster <strong>at least</strong> the number of stages this slider sets.</p>
+<p>Sometimes, one puts different emphasis on different stages/conditions and might only consider a gene as a marker candidate when it is expressed in some stages. To account for this scenario, <code>From cluster</code> and <code>From gene</code> tabs provide stage check boxes for one to select the stages at which a gene must be expressed. (e.g., if the slider is set at 4 and <strong>Adult</strong> stage is checked, a gene must be expressed in the adult stage and any other 3 stages to be considered).</p>
+</section>
+</section>
+<section id="from-cluster-finding-the-first-marker-for-your-favorite-cluster" class="level2" data-number="5.3">
+<h2 data-number="5.3" class="anchored" data-anchor-id="from-cluster-finding-the-first-marker-for-your-favorite-cluster"><span class="header-section-number">5.3</span> <code>From cluster</code>: Finding the first marker for your favorite cluster</h2>
+<p>From this tab, we begin by selecting <strong>one</strong> cluster from the <code>Clusters of interest</code> menu. With the criteria set in <a href="#sec-expressed"><span>Section&nbsp;5.2</span></a></p>
 
 
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">

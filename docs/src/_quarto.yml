@@ -11,9 +11,9 @@ book:
     - index.qmd
     - preprocess.qmd
     - config.qmd
-    - quick_start.qmd
-    - first_marker.qmd
-    - shared_options.qmd
+    - recommended_workflow.qmd
+    # - first_marker.qmd
+    # - shared_options.qmd
     # - news.qmd
     # - avail_lines.qmd
 

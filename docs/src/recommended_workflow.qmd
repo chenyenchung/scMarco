@@ -1,5 +1,5 @@
 ---
-title: "Quick Start"
+title: "Recommended Workflow"
 ---
 
 `scMarko` aims to help with the heuristic selection of markers for your cell

@@ -4,9 +4,9 @@ title: "Prepare Data"
 
 If you have **average normalized expression** and **modeled expression probability** for each cluster, this section will demonstrate how to prepare them for visualization with `scMarco`.
 
-If you use [`Seurat`](https://satijalab.org/seurat/) to process your data, cluster average expression can be retrieved with [`AverageExpression()`](https://satijalab.org/seurat/reference/averageexpression) [^preprocess-1].
+If you use [`Seurat`](https://satijalab.org/seurat/) to process your data, cluster average expression can be retrieved with [`AverageExpression()`](https://satijalab.org/seurat/reference/averageexpression) [^1].
 
-[^preprocess-1]: Note that you need to set `return.seurat = TRUE` to get log-normalized average ([Also see](https://github.com/satijalab/seurat/issues/193)).
+[^1]: Note that you need to set `return.seurat = TRUE` to get log-normalized average ([Also see](https://github.com/satijalab/seurat/issues/193)).
 
 This will render a data.frame where each row is a gene while each column is a cluster:
 

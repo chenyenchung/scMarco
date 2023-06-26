@@ -1,3 +1,73 @@
 ---
 title: "Select the First Marker"
 ---
+
+## What `scMarco` assumes
+
+We imagine that a specific marker combination could be useful in two ways:
+
+1. To specifically label a cluster so we know how they look like and where
+they locate _in vivo_.
+
+2. To distinguish subpopulations that share a known marker.
+
+In the first scenario, `scMarco` will provide a list of **genes** that are
+**expressed** and how many other clusters they are also detected in. In the 
+second scenario, `scMarco` will provide a list of **clusters** that express the
+marker you selected.
+
+Both scenarios end up providing a list of clusters that we will select a
+second marker to help distinguish.
+
+## Define **_expressed_** {#sec-expressed}
+
+Claiming a gene is expressed involves two cutoffs that must be decided:
+
+1. How high the modeled probability must be? (e.g., Do I consider a gene that
+has an expression probability of 0.6 expressed?)
+
+2. (If there are multiple stages/conditions) In how many stages a gene must
+show expression probability above the threshold decided in (1)? (e.g., 
+if I have 6 stages in my dataset, and a gene is only expressed in a cluster at
+4 stages, do I consider this gene expressed in this cluster?)
+
+`scMarco` provides two options corresponding to the two criteria:
+
+### `Probability threshold to be considered as expressed`
+
+The slider set the threshold for expression probability for each stage. The
+expression probability must **exceed** this number to be considered as
+expressed.
+
+### `How many stages must the gene to be detected in?`
+
+This slider is provided by the `From cluster` and `From gene` tabs. When your
+dataset involves multiple stages/conditions, a gene will only be considered as
+expressed for a cluster when it is expressed in the cluster **at least** the
+number of stages this slider sets.
+
+Sometimes, one puts different emphasis on different stages/conditions and might
+only consider a gene as a marker candidate when it is expressed in some stages.
+To account for this scenario, `From cluster` and `From gene` tabs provide
+stage check boxes for one to select the stages at which a gene must be expressed.
+(e.g., if the slider is set at 4 and **Adult** stage is checked, a gene must be
+expressed in the adult stage and any other 3 stages to be considered).
+
+## `From cluster`: Finding the first marker for your favorite cluster
+
+From this tab, we begin by selecting **one** cluster from the `Clusters of
+interest` menu. With the criteria set in @sec-expressed, `scMarco` ranks the
+genes that are expressed in this cluster by the number of other clusters a gene
+is also expressed. You can set the numbers of most specific genes to view
+(i.e., expressed in fewer other clusters) with `How many genes to show` slider.
+
+Once we select a gene as the first marker, `scMarco` lists all other clusters
+that also express this gene in a pop-up window
+
+## `From gene`: Distinguish clusters that share a marker gene
+
+From this tab, we begin by selecting one gene that you are interested in from
+the `Which gene?` dropdown menu. With the criteria set in @sec-expressed,
+`scMarco` lists all clusters that express this gene.
+
+

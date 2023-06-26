@@ -236,13 +236,13 @@ GetAllExpressedGenesForThis <- function(
   #' returned (only effective when stage = NULL)
 
   # Input type-checking
-  if (length(ident) != 1) {
-    stop("Please select one cluster.")
-  }
+  # if (length(ident) != 1) {
+  #   stop("Please select one cluster.")
+  # }
 
   stage_choose <- stages[stage]
 
-  gkeep <- subset(prob_mat, cluster == ident)
+  gkeep <- subset(prob_mat, cluster %in% ident)
   gkeep <- split(gkeep$stage, gkeep$gene)
 
   gkeep <- vapply(
@@ -256,7 +256,7 @@ GetAllExpressedGenesForThis <- function(
 
   gkeep <- names(gkeep)[gkeep]
   # Only keep the genes that are "expressed" in the cluster of interest
-  prob_mat <- subset(prob_mat, gene %in% gkeep & cluster != ident)
+  prob_mat <- subset(prob_mat, gene %in% gkeep & !(cluster %in% ident))
 
 
   # Count off-targets
@@ -270,6 +270,12 @@ GetAllExpressedGenesForThis <- function(
     },
     FUN.VALUE = integer(1)
   )
+
+  # Pad perfect genes
+  pad_genes <- setdiff(gkeep, names(other_count))
+  pad_count <- rep(0, length(pad_genes))
+  names(pad_count) <- pad_genes
+  other_count <- c(other_count, pad_count)
 
   return(sort(other_count, decreasing = FALSE)[seq(output_limit)])
 }
