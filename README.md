@@ -2,7 +2,9 @@
 
 This tool accompanies [Chen et al. (2023)](https://doi.org/10.1101/2023.02.03.527019)
 and aims to streamline the art and science of selecting marker combinations with
-a Bayesian mixture model to binarize gene expression in scRNA-seq.
+a Bayesian mixture model to binarize gene expression in scRNA-seq ([Davis et al. (2018)](https://elifesciences.org/articles/50901#s4);
+we maintain [a fork](https://github.com/chenyenchung/mixture_modeling/) that patched
+[a bug in elpd estimation](https://github.com/fredpdavis/opticlobe/pull/1)).
 
 We recommend users to start **from a cluster (From cluster)** or **from a gene
 that marks several clusters (From gene)** of interest. Either tab will help you
