@@ -1,4 +1,4 @@
-title: "Marker Combo Selector"
+title: "scMarco"
 
 database_path: 'int/db.sqlite'
 
@@ -6,9 +6,6 @@ databases:
   ozel_2021:
     label: "Optic lobe: Ozel et al. (2021)"
     stages: ['P15', 'P30', 'P40', 'P50', 'P70', 'Adult']
-  ors:
-    label: "ORNs: McLaughin et al. (2021)"
-    stages: ['24h', '42h', 'adult']
 
 
 gene_list:
@@ -16,7 +13,7 @@ gene_list:
     path: "data/flybase_tfs.txt"
     label: "FlyBase TFs"
   mimic:
-    path: "data/mimic_temp.txt"
+    path: "data/MIMIC_CRIMIC_20230401.txt"
     label: "RMCE swappable gene-specific lines"
   split_gal4:
     path: "data/20220804_split_gal4.txt"

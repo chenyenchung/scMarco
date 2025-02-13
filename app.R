@@ -17,7 +17,7 @@ library(RSQLite)
 library(shinybusy)
 library(bslib)
 options(ragg.max_dim = Inf)
-
+options(bitmapType='cairo')
 
 config <- read_yaml("config.yaml")
 if (is.null(config$cache_path)) {
