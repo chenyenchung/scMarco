@@ -9,5 +9,8 @@ rsconnect/*
 
 ## Do not track source data
 data/*
+app_cache/*
+misc/*
+temp/*
 int/*
 .Rproj.user
