@@ -13,9 +13,9 @@ write_clusters_h5ad <- function(path, obs_split, obs_cluster, splits, clusters,
                                 bimodal_by_split = NULL, n_cells = NULL,
                                 split_label = "split", ordered_splits = FALSE,
                                 extra_uns = list()) {
-  #' layers: named list of n_obs x n_genes numeric matrices ("prob" required)
+  #' layers: named list of n_obs x n_genes numeric matrices. Without "prob"
+  #'   the file is in the *built* state; add_probability_layer() binarizes it.
   #' bimodal_by_split: optional n_genes x n_splits logical matrix
-  stopifnot("prob" %in% names(layers))
   obs <- data.frame(
     split = factor(obs_split, levels = splits, ordered = ordered_splits),
     cluster = factor(obs_cluster, levels = clusters),
@@ -58,6 +58,52 @@ write_clusters_h5ad <- function(path, obs_split, obs_cluster, splits, clusters,
     dense = paste0("/layers/", names(layers)),
     gene_block = min(256, length(genes))
   )
+  invisible(path)
+}
+
+add_probability_layer <- function(path, prob, bimodal_by_split, binarization) {
+  #' Binarize a clusters file in place: write layers/prob, var/is_bimodal,
+  #' varm/bimodal_by_split and uns/scmarco/binarization. Replaces any earlier
+  #' probabilities; obs, the other layers and uns are kept.
+  #' prob: n_obs x n_genes matrix in obs order
+  #' bimodal_by_split: n_genes x n_splits logical matrix, columns named by split
+  #' binarization: list(method, source, date)
+  ad <- read_h5ad(path, as = "InMemoryAnnData")
+  splits <- levels(ad$obs$split)
+  genes <- rownames(ad$var)
+  stopifnot(
+    identical(dim(prob), c(nrow(ad$obs), length(genes))),
+    setequal(colnames(bimodal_by_split), splits)
+  )
+  dimnames(prob) <- list(rownames(ad$obs), genes)
+  layers <- ad$layers
+  layers$prob <- prob
+  ad$layers <- layers
+
+  bim <- bimodal_by_split[genes, splits, drop = FALSE]
+  var <- ad$var
+  var$is_bimodal <- rowSums(bim) > 0
+  ad$var <- var
+  # anndataR writes logical matrices as flat vectors; store 0/1 integers
+  storage.mode(bim) <- "integer"
+  varm <- if (is.null(ad$varm)) list() else ad$varm
+  varm$bimodal_by_split <- unname(bim)
+  ad$varm <- varm
+
+  uns <- ad$uns
+  uns$scmarco$bimodal_splits <- splits
+  uns$scmarco$binarization <- binarization
+  ad$uns <- uns
+
+  tmp <- paste0(path, ".binarize")
+  on.exit(unlink(tmp))
+  write_h5ad(ad, tmp, mode = "w")
+  rechunk_h5ad(
+    tmp, n_obs = nrow(ad$obs),
+    dense = paste0("/layers/", names(layers)),
+    gene_block = min(256, length(genes))
+  )
+  file.rename(tmp, path)
   invisible(path)
 }
 

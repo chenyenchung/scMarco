@@ -91,11 +91,12 @@ reader (`src/backend_h5ad.R`); Python is not needed at runtime.
 
 | script | use |
 |---|---|
-| `seurat_to_h5ad.R` | new data: Seurat object (`<split>@<cluster>` identities) + mixture-model table + optional subset UMAPs |
+| `seurat_to_h5ad.R` | new data: Seurat object (split and cluster ID in metadata columns) + optional subset UMAPs → a *built* dataset; `--prob` also binarizes it |
+| `add_probability_h5ad.R` | binarize a built dataset with the mixture-model output, one table per split; the app needs this step |
 | `sqlite_to_h5ad.R` | migrate a legacy scMarco SQLite table |
 | `h5v1_to_h5ad.R` | migrate a legacy scMarco-Ding-lab `db.h5` dataset |
 | `set_cluster_names.R` | export or apply a `cluster_id`/`name` table; `--split-labels TRUE` turns legacy `name (id)` labels into ID + name |
-| `validate_h5ad.R` | check a dataset before deploying |
+| `validate_h5ad.R` | check a dataset before deploying (`--stage built` for one without probabilities yet) |
 | `find_pairs.R` | offline ranking of marker pairs for every cluster (CSV with `cluster` ID and `cluster_name`) |
 
 Each script prints its usage at the top of the file. The builders need the HDF5

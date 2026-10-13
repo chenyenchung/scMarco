@@ -210,6 +210,29 @@ cluster_choices <- function(ds, ids = ds$clusters) {
 
 .ds_cache <- new.env(parent = emptyenv())
 
+ds_check_config <- function(datasets) {
+  #' Check every configured dataset before loading any, and stop with one
+  #' message that lists each problem and its fix.
+  problems <- character(0)
+  for (id in names(datasets)) {
+    path <- datasets[[id]]$clusters
+    if (is.null(path) || !file.exists(path)) {
+      problems <- c(problems, sprintf("- %s: clusters file not found: %s", id,
+                                      if (is.null(path)) "(not set)" else path))
+    } else if (!h5ad_exists(path, "layers/prob")) {
+      problems <- c(problems, sprintf(
+        "- %s: %s has no probabilities yet. Add them with\n    Rscript script/add_probability_h5ad.R --clusters %s --prob <split>=<file.rds>,...",
+        id, path, path
+      ))
+    }
+  }
+  if (length(problems) > 0) {
+    stop("Some configured datasets cannot be loaded:\n",
+         paste(problems, collapse = "\n"), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 ds_load <- function(id, entry) {
   #' Load (and memoize per process) a dataset described by a config entry
   key <- paste(id, entry$clusters, file.info(entry$clusters)$mtime)
@@ -219,7 +242,8 @@ ds_load <- function(id, entry) {
 
   ch <- h5ad_open(entry$clusters)
   if (!"prob" %in% ch$layers) {
-    stop(entry$clusters, " has no 'prob' layer")
+    stop(entry$clusters, " has no probabilities; add them with ",
+         "script/add_probability_h5ad.R", call. = FALSE)
   }
   meta <- ch$uns$scmarco
   if (is.null(meta)) meta <- list()

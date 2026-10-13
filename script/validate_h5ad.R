@@ -3,8 +3,10 @@
 #
 # Usage:
 #   Rscript script/validate_h5ad.R --clusters data/x.clusters.h5ad \
-#     [--cells data/x.cells.h5ad]
+#     [--cells data/x.cells.h5ad] [--stage built|binarized]
 #
+# --stage built accepts a dataset without probabilities (fresh from
+# seurat_to_h5ad.R); the default, binarized, is what the app needs.
 # Exits non-zero when any error is found; warnings are printed only.
 
 get_script_dir <- function() {
@@ -15,7 +17,10 @@ root <- dirname(get_script_dir())
 source(file.path(get_script_dir(), "lib_write_h5ad.R"))
 source(file.path(root, "src", "backend_h5ad.R"))
 
-args <- parse_cli(list(clusters = NA, cells = ""))
+args <- parse_cli(list(clusters = NA, cells = "", stage = "binarized"))
+if (!args$stage %in% c("built", "binarized")) {
+  stop("--stage must be built or binarized, not ", args$stage)
+}
 errors <- character(0)
 warnings <- character(0)
 err <- function(...) errors <<- c(errors, paste0(...))
@@ -37,7 +42,12 @@ pairs <- paste(ch$obs$split, ch$obs$cluster, sep = "|")
 if (anyNA(ch$obs$split) || anyNA(ch$obs$cluster)) err("obs split/cluster contain missing values")
 if (anyDuplicated(pairs)) err("obs has duplicated split x cluster rows")
 if (!identical(rownames(ch$obs), pairs)) err("obs index is not \"<split>|<cluster>\"")
-if (any(grepl("|", levels(ch$obs$cluster), fixed = TRUE))) err("cluster IDs contain '|'")
+for (col in c("split", "cluster")) {
+  lv <- levels(ch$obs[[col]])
+  if (any(grepl("|", lv, fixed = TRUE))) err(col, " labels contain '|'")
+  if (any(lv == "")) err(col, " labels include an empty string")
+  if (any(lv != trimws(lv))) err(col, " labels start or end with whitespace")
+}
 names_ok <- tryCatch(
   read_cluster_names(ch$obs, levels(ch$obs$cluster)),
   error = function(e) {
@@ -64,8 +74,16 @@ if (!is.null(meta$split_order) &&
   err("uns split_order does not match the obs split categories")
 }
 
-if (!"prob" %in% ch$layers) {
-  err("layers/prob is missing")
+binarized <- "prob" %in% ch$layers
+if (!binarized && args$stage == "binarized") {
+  err("layers/prob is missing; add it with script/add_probability_h5ad.R ",
+      "(or validate with --stage built)")
+}
+if (binarized && !is.null(meta$binarization)) {
+  missing <- setdiff(c("method", "source", "date"), names(meta$binarization))
+  if (length(missing) > 0) {
+    err("uns/scmarco/binarization lacks ", paste(missing, collapse = ", "))
+  }
 }
 for (layer in intersect(c("prob", "pct_pos", "mean_lognorm"), ch$layers)) {
   m <- h5ad_layer(ch, layer)
@@ -89,7 +107,7 @@ if ("bimodal_by_split" %in% ch$varm) {
     err("uns bimodal_splits does not match the obs split categories")
   }
 }
-if (!"is_bimodal" %in% names(ch$var)) {
+if (binarized && !"is_bimodal" %in% names(ch$var)) {
   warn("var/is_bimodal is missing: every gene will be used for marker finding")
 }
 
@@ -123,4 +141,5 @@ for (e in errors) message("ERROR:   ", e)
 if (length(errors) > 0) {
   quit(status = 1)
 }
-message("OK: ", args$clusters, if (nzchar(args$cells)) paste(" +", args$cells))
+message("OK (", if (binarized) "binarized" else "built", "): ", args$clusters,
+        if (nzchar(args$cells)) paste(" +", args$cells))

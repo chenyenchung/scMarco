@@ -46,6 +46,7 @@ gene_list_labels <- vapply(
 )
 
 # Load every dataset once per process (shared across sessions)
+ds_check_config(config$datasets)
 datasets <- lapply(names(config$datasets), function(id) {
   message("Loading dataset ", id, "...")
   ds_load(id, config$datasets[[id]])

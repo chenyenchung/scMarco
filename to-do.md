@@ -16,19 +16,19 @@ The input formats are specified in [`docs/expected_input.md`](docs/expected_inpu
 ## 0. Expected input spec
 
 - [x] Write `docs/expected_input.md` (Seurat object, probability tables, file states).
-- [ ] Keep it in sync with `check_seurat_input()` and `add_probability_h5ad.R` as they are implemented.
+- [ ] Keep it in sync with `script/lib_import.R` and `add_probability_h5ad.R` as they are implemented.
 
 ## 1. Shared plumbing
 
-- [ ] `script/lib_write_h5ad.R`: make `prob` optional in `write_clusters_h5ad()`.
+- [x] `script/lib_write_h5ad.R`: make `prob` optional in `write_clusters_h5ad()`.
   Add `add_probability_layer(path, prob, is_bimodal, bimodal_by_split, meta)`,
   which reads with `anndataR::read_h5ad`, adds the layer, `var` and `varm`,
   rewrites the file, then reuses `rechunk_h5ad()`.
-- [ ] `script/validate_h5ad.R`: add `--stage built|binarized` (default
+- [x] `script/validate_h5ad.R`: add `--stage built|binarized` (default
   `binarized`). A missing `prob` is an error for `binarized` and fine for
   `built`. Add the Seurat-derived checks from the spec (name rules, obs
   index separator, `uns/scmarco/binarization`).
-- [ ] `src/backend_h5ad.R` `ds_load()` and `app.R`: at startup, check **every**
+- [x] `src/backend_h5ad.R` `ds_load()` and `app.R`: at startup, check **every**
   configured dataset, then stop with one message that lists each dataset
   missing `prob` and the fix (`Rscript script/add_probability_h5ad.R ...`).
   Today `ds_load()` stops on the first such dataset with a terse message.
@@ -65,21 +65,23 @@ The input formats are specified in [`docs/expected_input.md`](docs/expected_inpu
 
 ## 3. Build from Seurat without binarization
 
-- [ ] Split `script/seurat_to_h5ad.R` into a **build** step that makes `--prob`
+- [x] Split `script/seurat_to_h5ad.R` into a **build** step that makes `--prob`
   optional. The build step writes `clusters.h5ad` with `pct_pos`,
   `mean_lognorm` and `n_cells`, plus `cells.h5ad`, and leaves the file in the
   *built* state.
-- [ ] Support `--split-col` / `--cluster-col` (defaults `scmarco_split` /
-  `scmarco_cluster`), with the `<split>@<cluster>` identities as fallback. Put
-  input checks in `check_seurat_input()` with actionable errors, following the spec.
-- [ ] New `script/add_probability_h5ad.R`: reads one mixture-model table per
+- [x] Support `--split-col` / `--cluster-col` (defaults `scmarco_split` /
+  `scmarco_cluster`; `--split-col none` for one split), with the
+  `<split>@<cluster>` identities as fallback. Input checks are
+  `seurat_labels()` / `check_labels()` / `assemble_prob()` in
+  `script/lib_import.R`, with actionable errors, following the spec.
+- [x] New `script/add_probability_h5ad.R`: reads one mixture-model table per
   split (`--prob Male=a.rds,Female=b.rds`, or one `.rds` with a named list),
   whose columns are cluster IDs plus QC columns with a per-split `exprType`.
   The legacy wide `<split>@<cluster>` RDS is accepted as a fallback. It
   validates the tables against the clusters file and writes
   `prob`, `is_bimodal`, `bimodal_by_split` and `uns/scmarco/binarization`, then
   validates with `--stage binarized`.
-- [ ] Tests, extending `tests/testthat/test-seurat_import.R`:
+- [x] Tests, extending `tests/testthat/test-seurat_import.R`:
   1. build, then validate (`built`);
   2. check that the app refuses the dataset;
   3. add probabilities, from per-split files, a named-list RDS and the legacy
@@ -117,6 +119,6 @@ The input formats are specified in [`docs/expected_input.md`](docs/expected_inpu
 - [ ] **smk pipeline helper** for
   [mixture_modeling_smk](https://github.com/chenyenchung/mixture_modeling_smk):
   export the pipeline's inputs from a *built* dataset, run or submit the
-  pipeline, and import its output through `add_probability_h5ad.R`. The long
-  table in `docs/expected_input.md` is canonical so this helper needs no new
-  import format. The export format still has to be confirmed against the pipeline.
+  pipeline, and import its output through `add_probability_h5ad.R`, which
+  already reads the pipeline's per-split tables as they are, so this helper
+  needs no new import format. The export format still has to be confirmed against the pipeline.
