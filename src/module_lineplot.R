@@ -13,7 +13,7 @@ lineplot_UI <- function(id) {
     ),
     actionButton(
       NS(id, "do_lineplot"),
-      "Plot log-normalized exp over stages"
+      "Plot log-normalized expression"
     ),
     uiOutput(NS(id, "cond_dl"))
   )
@@ -21,97 +21,57 @@ lineplot_UI <- function(id) {
 
 lineplot_output <- function(id) {
   tagList(
-    plotlyOutput(NS(id, "lineplot"), height = "800px")
+    plotly::plotlyOutput(NS(id, "lineplot"), height = "800px")
   )
 }
 
-lineplot_server <- function(
-    id, parent_session, stages, db, db_tbl,
-    # Reactive params
-    sql_where, idents, genes
-) {
+lineplot_server <- function(id, ctx) {
   moduleServer(
     id,
     function(input, output, session) {
-      observe(
-        {
-          # Generate SQL statement based on global filter condition
-          this_sql_where <- sql_where()
-          if (this_sql_where != "") {
-            # Grow WHERE clause if there is already elements
-            this_sql_where <- c(this_sql_where, "type = 'lognorm'")
-          } else {
-            # Start from scratch if WHERE clause was empty
-            this_sql_where <- "type = 'lognorm'"
-          }
+      observe({
+        updateSelectizeInput(
+          session, "gene_of_interest", choices = ctx$all_genes(), server = TRUE
+        )
+      })
 
-          input_q <- paste(
-            "SELECT DISTINCT gene FROM", db_tbl(), wherecat(this_sql_where)
+      request <- eventReactive(
+        input$do_lineplot, {
+          ok <- require_or_modal(
+            nzchar(input$gene_of_interest),
+            "Please select a gene", "Select a gene to plot its expression trend."
           )
-
-          # Update the gene selection panel for line plot
-          updateSelectizeInput(
-            session,
-            inputId = "gene_of_interest",
-            choices = genes(),
-            server = TRUE
-          )
+          if (!ok) return(NULL)
+          list(gene = input$gene_of_interest, highlight = ctx$idents(),
+               alpha = input$line_alpha, ds = ctx$ds())
         }
       )
 
-      lineplot <- eventReactive(
-        input$do_lineplot,
-        {
-          LinePlot(
-            db,
-            db_tbl(),
-            sql_where = sql_where(),
-            features = input$gene_of_interest,
-            highlight_idents = idents(),
-            stages = stages(),
-            lowlight_dim = input$line_alpha,
-            highlight_col = "red"
-          )
-        }
-      )
-
-      # # Switch to the on/off plot panel when asked to plot
       observeEvent(
-        input$do_lineplot,
-        {
+        input$do_lineplot, {
           updateTabsetPanel(
-            parent_session,
+            ctx$parent_session,
             inputId = "outputTabs",
             selected = "Expression Trend"
           )
+          output$cond_dl <- renderUI({ggdownload_UI(NS(id, "dl_lplot"))})
         }
       )
 
-      output$lineplot <- renderPlotly(
-        lineplot()
-      )
-
-      # Show download button after plot is generated
-      observeEvent(input$do_lineplot, {
-        output$cond_dl <- renderUI({ggdownload_UI(NS(id, "dl_lplot"))})
+      output$lineplot <- plotly::renderPlotly({
+        req <- request()
+        shiny::req(req)
+        trend_plot(req$ds, req$gene, req$highlight, req$alpha, interactive = TRUE)
       })
 
       ggdownload_server(
         "dl_lplot",
-        filename = idents,
+        filename = reactive(c(request()$gene, request()$highlight)),
         payload = function() {
-            LinePlot(
-              db,
-              db_tbl(),
-              sql_where = sql_where(),
-              features = input$gene_of_interest,
-              highlight_idents = idents(),
-              stages = stages(),
-              lowlight_dim = input$line_alpha,
-              ggobj = TRUE
-            )
-          },
-        height = function() {return(1000)},
+          req <- request()
+          trend_plot(req$ds, req$gene, req$highlight, req$alpha, interactive = FALSE)
+        },
+        height = 1000,
         width = 1500
       )
     }

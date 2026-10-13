@@ -1,5 +1,4 @@
 ggdownload_UI <- function(id) {
-  uiOutput(NS(id, "dl_interface"))
   tagList(
     selectInput(
       NS(id, 'filetype'),
@@ -16,27 +15,28 @@ ggdownload_UI <- function(id) {
 }
 
 ggdownload_server <- function(id, filename, payload, height, width) {
+  #' height, width: pixels, as numbers or functions returning numbers
   moduleServer(
     id, function(input, output, session) {
       output$download <- downloadHandler(
-        filename = function(gene = filename(), ext = input$filetype) {
-          if (length(gene) == 0) {
-            gene <- "download"
+        filename = function() {
+          stem <- filename()
+          if (length(stem) == 0) {
+            stem <- "download"
           }
-          if (length(gene) > 1) {
-            gene <- paste(gene, collapse = "_")
-          }
-          gene <- gsub("[[:punct:] ]+", "_", gene)
-          return(paste(gene, ext, sep = "."))
+          stem <- paste(stem, collapse = "_")
+          stem <- gsub("[[:punct:] ]+", "_", stem)
+          paste(stem, input$filetype, sep = ".")
         },
-        content = function(file){
+        content = function(file) {
           ggsave(
             file,
             plot = payload(),
-            height = height(),
-            width = width,
+            height = value_of(height),
+            width = value_of(width),
             limitsize = FALSE,
-            units = "px"
+            units = "px",
+            dpi = 150
           )
         }
       )

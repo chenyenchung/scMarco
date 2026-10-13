@@ -1,97 +1,124 @@
-## How to use this tool?
+# scMarco (harmonized)
 
-This tool accompanies [Chen et al. (2023)](https://doi.org/10.1101/2023.02.03.527019)
-and aims to streamline the art and science of selecting marker combinations with
-a Bayesian mixture model to binarize gene expression in scRNA-seq ([Davis et al. (2018)](https://elifesciences.org/articles/50901#s4);
-we maintain [a fork](https://github.com/chenyenchung/mixture_modeling_smk) that patched
-[a bug in elpd estimation](https://github.com/fredpdavis/opticlobe/pull/1)).
+A Shiny app for selecting marker gene combinations from mixture-model
+binarized scRNA-seq expression. This codebase merges the two earlier forks:
 
-We recommend users to start **from a cluster (From cluster)** or **from a gene
-that marks several clusters (From gene)** of interest. Either tab will help you
-identify other clusters that could be marked when you only use one marker, and
-help you select another marker to specifically label it (**Find distinct genes
-within**).
+- `scMarco` (optic lobe): SQLite backend, ordered stages, expression-trend plot;
+- `scMarco-Ding-lab` (dsx neurons): HDF5 backend, sex/species splits, UMAPs,
+  % positive overlays, non-bimodal gene handling.
 
-Once marker combinations are found, you might want to see how other clusters
-in the same dataset express this combination (**Co-exprssion plot**).
+Every lab runs the same code with its own `config.yaml` and data folder. Tabs
+appear only when a dataset has the data they need.
 
-We acknowledge that while binarization greatly reduces computational complexity,
-it has its limitation: Gene expression is a spectrum, and there would be
-clusters that are hard to categorize to either ON or OFF state. We thus 
-encourage users to also examine log-normalized expression value and its
-dynamic (**Plot expression trend**) and decide whether a satisfactory pair of
-markers have been identified.
+## Running
 
-### Shared options
+```sh
+# once: restore the R library (renv) and, optionally, Python for checks
+Rscript -e 'renv::restore()'
+uv venv .venv && uv pip install --python .venv/bin/python anndata h5py
 
-#### Which dataset to use?
+# run an instance
+SCMARCO_CONFIG=configs/optic_lobe.yaml Rscript -e 'shiny::runApp(".")'
+SCMARCO_CONFIG=configs/dinglab.yaml    Rscript -e 'shiny::runApp(".")'
+Rscript -e 'shiny::runApp(".")'        # config.yaml: every dataset
+```
 
-This tool retrieves information stored in a [SQLite3](https://sqlite.org/index.html)
-database, which is preprocessed by Bayesian mixture modeling from single-cell
-transcriptomics data.
+For deployment (e.g. shinyapps.io), copy the lab's config to `config.yaml`
+and ship its `data/*.h5ad` files alongside the app.
 
-Multiple datasets could co-exist in the database, and this switch allows users
-to explore what intrigues them the most.
+## Config
 
-#### Which genes to consider?
+```yaml
+title: "scMarco"
+theme: minty                 # any bootswatch theme
+readme:                      # Markdown files shown in "Read Me", in order
+  - readme/optic_lobe.md
+  - readme/usage.md
+datasets:
+  ozel_2021_new:             # id
+    label: "Reclustered optic lobe: ..."
+    clusters: data/ozel_2021_new.clusters.h5ad   # required
+    cells: data/ozel_2021_new.cells.h5ad         # optional
+    default: true            # selected at startup
+    split_order: [...]       # optional overrides of the file's uns/scmarco
+    split_label: stage
+    ordered_splits: true
+gene_list:
+  flybase_tf: {path: gene_lists/flybase_tfs.txt, label: "FlyBase TFs"}
+```
 
-By default, every gene that is detected in the dataset is used for analysis and
-visualization. You can provide your own gene list to focus on them. Please note
-that gene symbols used in reference genomes could change over time, and you 
-**need to examine if your provided gene list utilize the same naming scheme as
-your data**.
+## Data format (scMarco h5ad, format_version 2.0)
 
-#### Clusters of interest
+Each dataset is one or two [AnnData](https://anndata.readthedocs.io) files.
 
-The clusters to focus on (Find distinct genes within) or to highlight (Plot 
-expression trend).
+**`<id>.clusters.h5ad`** (required): one observation per split × cluster
+that exists.
 
-#### Probability threshold to be considered as expressed
+| slot | content |
+|---|---|
+| `obs` | index `"<split>\|<cluster>"`; `split` (categorical, ordered when splits are ordered), `cluster` (categorical), optional `n_cells` |
+| `var` | index = genes (sorted); optional `is_bimodal` (bool): genes used for marker finding |
+| `varm/bimodal_by_split` | optional genes × splits 0/1, column order in `uns/scmarco/bimodal_splits` |
+| `layers/prob` | mixture-model probability of expression (NaN = not modeled / non-bimodal) |
+| `layers/pct_pos` | optional fraction of cells with > 0 UMIs |
+| `layers/mean_lognorm` | optional cluster-average log-normalized expression (trend plot) |
+| `uns/scmarco` | `format_version`, `split_label`, `split_order`, `ordered_splits`, `source` |
 
-Binomial probability of a gene being expressed in a cluster/cell type . A cutoff is selected here to decide the probability threshold to
-consider a gene **ON**.
+A cluster absent from a split simply has no row, so missing values never mean
+two things.
 
-### From cluster
+**`<id>.cells.h5ad`** (optional): enables the UMAP tab and the true
+co-expression percentage.
 
-Starting from one cluster, define how consistent among different stages/
-conditions you desire for a marker. After clicking **Show genes**, the 
-consistently expressing genes would be demonstrated and ranked by how many
-other clusters they are also detected in.
+| slot | content |
+|---|---|
+| `X` | log-normalized expression, cells × genes, **CSC** (fast per-gene reads) |
+| `obs` | index `"<split>\|<barcode>"`; `barcode`, `split`, `cluster` |
+| `obsm/X_<name>` | reductions, cells × 2; NaN for cells outside a subset UMAP; `X_umap_full` is shown as "All cells" |
 
-You can select a gene, and move forward to **Find distinct genes within**.
+Files are written with anndataR and then re-chunked with `h5repack`, so
+per-gene reads touch only small blocks. The app reads them with a small rhdf5
+reader (`src/backend_h5ad.R`); Python is not needed at runtime.
 
+## Building datasets (`script/`)
 
-### From gene
+| script | use |
+|---|---|
+| `seurat_to_h5ad.R` | new data: Seurat object (`<split>@<cluster>` identities) + mixture-model table + optional subset UMAPs |
+| `sqlite_to_h5ad.R` | migrate a legacy scMarco SQLite table |
+| `h5v1_to_h5ad.R` | migrate a legacy scMarco-Ding-lab `db.h5` dataset |
+| `validate_h5ad.R` | check a dataset before deploying |
+| `find_pairs.R` | offline ranking of marker pairs for every cluster |
 
-Similar to **From clustser**, but starting from a gene. You define how 
-consistent among different stages/conditions you desire for a marker. After
-clicking **Show clusters**, all clusters that consistently express this gene
-would be shown, and you can choose the clusters that you want to distinguish
-and move forward to **Find distinct genes within**.
-other clusters they are also detected in.
+Each script prints its usage at the top of the file. The builders need the HDF5
+command-line tools (`h5repack`) for re-chunking.
 
-### Find distinct genes within
+## Code layout
 
-Among your clusters of interest, find genes that are only **ON** in one cluster
-but not others. Use the slide bar to define **ON** as _expressed in at least N
-stages_. Alternatively, use the check boxes to select the stages a gene must be
-expressed to be considered as **ON**.
+| file | role |
+|---|---|
+| `src/combo_core.R` | pure combination logic (From cluster, From gene, distinct genes, pairs); unit tested |
+| `src/backend_h5ad.R` | h5ad reader and per-process dataset cache |
+| `src/plot_core.R` | On/Off, co-expression, trend and UMAP plots |
+| `src/module_*.R` | one Shiny module per tab |
+| `app.R` | config, sidebar (dataset, genes, clusters, threshold, split criteria), tab gating |
 
-Click **Find genes** to visualize how well you can distinguish these clusters
-with the addition of another gene. You could pick a gene from this list to
-use together with what you chose in **From cluster** or **From gene**.
+## Tests
 
-You might want to visualize this gene pair to see how they express in other
-clusters in the dataset with **Co-expression plot**.
+```sh
+Rscript -e 'testthat::test_dir("tests/testthat")'              # unit tests (fixtures only)
+SCMARCO_CONFIG=configs/all.yaml Rscript tests/integration/app_flow.R  # full workflow per dataset
+Rscript tests/parity/parity.R ../scMarco ../scMarco-Ding-lab    # vs. legacy implementations
+```
 
-### Co-expression plot
+## Behavior changes from the legacy forks
 
-Select genes that you are interested in, and visualize their co-expression
-pattern through different stages.
-
-### Plot expression trend
-
-This tool generates an interactive line plot of log-transformed cluster average
-normalized expression. Cluster label will be shown when you point your cursor to
-a point. Clusters of interest will be highlighted (and coded with distinct
-colors when you download a static version of the plot).
+- Split criteria are global: "must be ON in these splits" and "…in at least N".
+- Thresholds are strict (`prob > cut`) everywhere; legacy scMarco's On/Off plot used `>=`.
+- From gene with several genes means *all* genes (or explicitly *any*), not a
+  pooled count; legacy scMarco errored and legacy Ding-lab pooled genes across splits.
+- The co-expression % is the share of cells expressing *all* genes (was the
+  mean of per-gene percentages).
+- Clusters absent from a split are drawn as a cross, not as OFF.
+- Find distinct ranks hits by off-targets outside the selection, plots the top N
+  per cluster and checks the combination against the whole dataset.

@@ -1,0 +1,104 @@
+#!/usr/bin/env Rscript
+# Validate a scMarco dataset (format_version 2.0) before deploying it.
+#
+# Usage:
+#   Rscript script/validate_h5ad.R --clusters data/x.clusters.h5ad \
+#     [--cells data/x.cells.h5ad]
+#
+# Exits non-zero when any error is found; warnings are printed only.
+
+get_script_dir <- function() {
+  arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+  dirname(normalizePath(sub("^--file=", "", arg[1])))
+}
+root <- dirname(get_script_dir())
+source(file.path(get_script_dir(), "lib_write_h5ad.R"))
+source(file.path(root, "src", "backend_h5ad.R"))
+
+args <- parse_cli(list(clusters = NA, cells = ""))
+errors <- character(0)
+warnings <- character(0)
+err <- function(...) errors <<- c(errors, paste0(...))
+warn <- function(...) warnings <<- c(warnings, paste0(...))
+
+ch <- h5ad_open(args$clusters)
+meta <- ch$uns$scmarco
+if (is.null(meta)) {
+  err("uns/scmarco is missing")
+  meta <- list()
+} else if (!identical(as.character(meta$format_version), SCMARCO_FORMAT_VERSION)) {
+  err("format_version is ", meta$format_version, ", expected ", SCMARCO_FORMAT_VERSION)
+}
+
+for (col in c("split", "cluster")) {
+  if (!is.factor(ch$obs[[col]])) err("obs/", col, " must be categorical")
+}
+pairs <- paste(ch$obs$split, ch$obs$cluster, sep = "|")
+if (anyNA(ch$obs$split) || anyNA(ch$obs$cluster)) err("obs split/cluster contain missing values")
+if (anyDuplicated(pairs)) err("obs has duplicated split x cluster rows")
+if (anyDuplicated(ch$genes)) err("var index (genes) is not unique")
+if (!is.null(meta$split_order) &&
+    !setequal(as.character(meta$split_order), levels(ch$obs$split))) {
+  err("uns split_order does not match the obs split categories")
+}
+
+if (!"prob" %in% ch$layers) {
+  err("layers/prob is missing")
+}
+for (layer in intersect(c("prob", "pct_pos", "mean_lognorm"), ch$layers)) {
+  m <- h5ad_layer(ch, layer)
+  if (!identical(dim(m), c(nrow(ch$obs), length(ch$genes)))) {
+    err("layers/", layer, " has shape ", paste(dim(m), collapse = "x"))
+    next
+  }
+  if (layer %in% c("prob", "pct_pos")) {
+    bad <- sum(!is.na(m) & (m < 0 | m > 1))
+    if (bad > 0) err("layers/", layer, ": ", bad, " values outside [0, 1]")
+  }
+  if (all(is.na(m))) warn("layers/", layer, " is entirely missing")
+}
+
+if ("bimodal_by_split" %in% ch$varm) {
+  bim <- h5ad_varm(ch, "bimodal_by_split")
+  if (nrow(bim) != length(ch$genes) || ncol(bim) != length(meta$bimodal_splits)) {
+    err("varm/bimodal_by_split shape does not match genes x uns bimodal_splits")
+  }
+  if (!setequal(as.character(meta$bimodal_splits), levels(ch$obs$split))) {
+    err("uns bimodal_splits does not match the obs split categories")
+  }
+}
+if (!"is_bimodal" %in% names(ch$var)) {
+  warn("var/is_bimodal is missing: every gene will be used for marker finding")
+}
+
+if (nzchar(args$cells)) {
+  xh <- h5ad_open(args$cells)
+  if (!identical(xh$x_encoding, "csc_matrix")) {
+    err("cells X is ", xh$x_encoding, "; per-gene reads need csc_matrix")
+  }
+  if (!identical(xh$genes, ch$genes)) {
+    err("cells var (genes) differs from the clusters file")
+  }
+  if (!setequal(levels(xh$obs$split), levels(ch$obs$split))) {
+    err("cells split categories differ from the clusters file")
+  }
+  cell_pairs <- unique(paste(xh$obs$split, xh$obs$cluster, sep = "|"))
+  missing <- setdiff(cell_pairs, pairs)
+  if (length(missing) > 0) {
+    warn(length(missing), " split x cluster pairs have cells but no clusters row, e.g. ",
+         paste(head(missing, 3), collapse = ", "))
+  }
+  for (key in xh$obsm) {
+    m <- h5ad_obsm(xh, key)
+    if (nrow(m) != nrow(xh$obs)) err("obsm/", key, " has ", nrow(m), " rows")
+    if (all(is.na(m))) warn("obsm/", key, " has no coordinates")
+  }
+  if (length(xh$obsm) == 0) warn("cells file has no reductions: the UMAP tab stays hidden")
+}
+
+for (w in warnings) message("WARNING: ", w)
+for (e in errors) message("ERROR:   ", e)
+if (length(errors) > 0) {
+  quit(status = 1)
+}
+message("OK: ", args$clusters, if (nzchar(args$cells)) paste(" +", args$cells))

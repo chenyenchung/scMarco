@@ -1,16 +1,14 @@
-## Do not track R system files and Mac OS files
 .DS_Store
 .Rhistory
 .Rproj.user*
-*.Rproj
-
-## Do not track rsconnect-related files
 rsconnect/*
-
-## Do not track source data
-data/*
-app_cache/*
-misc/*
-temp/*
+app_cache
 int/*
-.Rproj.user
+data/*.h5ad
+data/*.h5
+*.sqlite
+.venv/
+renv/library/
+renv/staging/
+renv/local/
+tests/parity/out/

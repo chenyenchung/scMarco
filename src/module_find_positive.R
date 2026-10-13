@@ -1,21 +1,19 @@
-find_pos_UI <- function(id, stages) {
+find_pos_UI <- function(id) {
   tagList(
     selectizeInput(
       NS(id, "gene"),
-      label = 'Which gene?',
+      label = 'Which gene(s)?',
       choices = NULL,
       multiple = TRUE
     ),
-    sliderInput(
-      NS(id, "pos_num"), "How many stages must the gene to be detected in?",
-      min = 1, max = length(stages), step = 1, value = 1
+    radioButtons(
+      NS(id, "mode"),
+      "With several genes, a cluster must express",
+      choices = c("all of them" = "all", "any of them" = "any"),
+      selected = "all",
+      inline = TRUE
     ),
-    checkboxGroupInput(
-      NS(id, "stages"),
-      "",
-      stages
-    ),
-    actionButton(NS(id, "do_fpos"), "Show clusters"),
+    actionButton(NS(id, "do_fpos"), "Show clusters")
   )
 }
 
@@ -25,115 +23,83 @@ find_pos_output <- function(id) {
   )
 }
 
-find_pos_server <- function(
-    id, stages, db, db_tbl,
-    # Reactive params
-    sql_where, idents, cut_off, parent_session, genes
-) {
+find_pos_server <- function(id, ctx) {
   moduleServer(
     id,
     function(input, output, session) {
+      observe({
+        updateSelectizeInput(
+          session, 'gene', choices = ctx$genes(), server = TRUE
+        )
+      })
 
-      observe(
-        {
-          # Generate SQL statement based on global filter condition
-          sql_where <- sql_where()
-          input_q <- ifelse(
-            sql_where == "",
-            paste("SELECT DISTINCT gene FROM", db_tbl()),
-            paste("SELECT DISTINCT gene FROM", db_tbl(), wherecat(sql_where))
-          )
-
-          updateSelectizeInput(
-            session,
-            'gene',
-            choices = genes(),
-            selected = NULL,
-            server = TRUE
-          )
-        }
-      )
-      observeEvent(
-        input$pos_num, {
-          # This is a hack. Without this, the above observe event is triggered
-          # before the input object is generated, and thus the options won't
-          # be updated at startup.
-          updateSelectizeInput(
-            session,
-            'gene',
-            choices = genes(),
-            selected = NULL,
-            server = TRUE
-          )
-        }
-      )
+      found <- reactiveVal(NULL)
 
       observeEvent(
         input$do_fpos, {
-          current_stages <- stages()
-          selected_stages <- current_stages %in% input$stages
-          stage_num <- max(
-            sum(selected_stages), input$pos_num - sum(selected_stages)
+          ok <- require_or_modal(
+            length(input$gene) > 0,
+            "Please select at least one gene",
+            "To find clusters expressing genes, select one or more genes from the dropdown."
           )
+          if (!ok) return()
 
-          clusters <- dbGetQuery(
-          db,
-          paste(
-            "SELECT DISTINCT cluster FROM",
-            db_tbl(), "WHERE gene =",
-            paste0("'", input$gene, "'"),
-            "AND type = 'prob'",
-            "AND value >", cut_off(),
-            "GROUP BY cluster",
-            "HAVING",
-            "COUNT(DISTINCT CASE WHEN stage IN", vec2sqllist(current_stages[selected_stages]),
-            "THEN stage END) =", sum(selected_stages), "AND",
-            "COUNT(DISTINCT CASE WHEN stage IN", vec2sqllist(current_stages[!selected_stages]),
-            "THEN stage END) >=", stage_num
+          clusters <- clusters_expressing(
+            ctx$b(), input$gene, ctx$required(), ctx$min_n(), mode = input$mode
           )
-        )
-
-        # Switch to cluster selection table
-        updateTabsetPanel(
-          parent_session,
-          inputId = "outputTabs",
-          selected = "Cluster Table"
-        )
-
-        # Show clusters for selection
-        output$selectTbl <- renderUI({
-          tagList(
-            tags$h4(
-              style = "margin: 10px",
-              checkboxGroupInput(
-                NS(id, "select_clust"), "Clusters",
-                clusters$cluster
-              )
-            ),
-            actionButton(NS(id, "pass"), "Select cluster")
+          ok <- require_or_modal(
+            length(clusters) > 0,
+            "No clusters found",
+            paste0(
+              "No cluster expresses ", paste(input$gene, collapse = ", "),
+              " with probability > ", ctx$cut(), ". ",
+              describe_splits(ctx$required(), ctx$min_n(), ctx$split_label())
+            )
           )
-        })
+          if (!ok) return()
+          found(list(genes = input$gene, mode = input$mode, clusters = clusters))
 
+          updateTabsetPanel(
+            ctx$parent_session,
+            inputId = "outputTabs",
+            selected = "Cluster Table"
+          )
         }
       )
+
+      output$selectTbl <- renderUI({
+        res <- found()
+        if (is.null(res)) return(NULL)
+        tagList(
+          tags$p(style = "margin: 10px",
+                 describe_splits(ctx$required(), ctx$min_n(), ctx$split_label())),
+          tags$h4(
+            style = "margin: 10px",
+            checkboxGroupInput(
+              NS(id, "select_clust"), "Clusters",
+              res$clusters, selected = res$clusters
+            )
+          ),
+          actionButton(NS(id, "pass"), "Select clusters")
+        )
+      })
+
       observeEvent(
         input$pass, {
+          res <- found()
           updateSelectizeInput(
-            parent_session,
+            ctx$parent_session,
             inputId = "clusters_of_interest",
             selected = input$select_clust
           )
           updateTabsetPanel(
-            parent_session,
+            ctx$parent_session,
             inputId = "controlTabs",
             selected = "Find distinct genes within"
           )
-          updateSelectInput(
-            parent_session,
-            inputId = "cache_last_g",
-            choices = input$gene,
-            selected = input$gene
-          )
+          # Only an "all genes" combination is a marker to extend; "any" is
+          # an exploratory union
+          ctx$first_mark(if (res$mode == "all") res$genes else character(0))
         }
       )
     }

@@ -1,0 +1,20 @@
+# Ding-lab instance (formerly scMarco-Ding-lab)
+title: "Marker Combo Selector"
+theme: journal
+readme:
+  - readme/dinglab.md
+  - readme/usage.md
+
+datasets:
+  dmel_mixed:
+    label: "Male and female melanogaster"
+    clusters: data/dmel_mixed.clusters.h5ad
+    cells: data/dmel_mixed.cells.h5ad
+    default: true
+  four_species:
+    label: "Four species"
+    clusters: data/four_species.clusters.h5ad
+    cells: data/four_species.cells.h5ad
+    split_order: ["Mel", "Yak", "San", "Tei"]
+
+gene_list: {}

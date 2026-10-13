@@ -1,0 +1,38 @@
+# Every converted dataset on one site (useful for testing)
+title: "scMarco"
+theme: minty
+readme:
+  - readme/all.md
+  - readme/usage.md
+
+datasets:
+  ozel_2021_new:
+    label: "Reclustered optic lobe: Ozel et al. (2021) / Treese et al. (2026)"
+    clusters: data/ozel_2021_new.clusters.h5ad
+    default: true
+  kurmangaliyev_2020_new:
+    label: "Reclustered optic lobe: Kurmangaliyev et al. (2020) / Treese et al. (2026)"
+    clusters: data/kurmangaliyev_2020_new.clusters.h5ad
+  ozel_2021:
+    label: "Optic lobe: Ozel et al. (2021)"
+    clusters: data/ozel_2021.clusters.h5ad
+  dmel_mixed:
+    label: "dsx neurons: male and female melanogaster"
+    clusters: data/dmel_mixed.clusters.h5ad
+    cells: data/dmel_mixed.cells.h5ad
+  four_species:
+    label: "dsx neurons: four species"
+    clusters: data/four_species.clusters.h5ad
+    cells: data/four_species.cells.h5ad
+    split_order: ["Mel", "Yak", "San", "Tei"]
+
+gene_list:
+  flybase_tf:
+    path: "gene_lists/flybase_tfs.txt"
+    label: "FlyBase TFs"
+  mimic:
+    path: "gene_lists/MIMIC_CRIMIC_20230401.txt"
+    label: "RMCE swappable gene-specific lines"
+  split_gal4:
+    path: "gene_lists/20220804_split_gal4.txt"
+    label: "Split-GAL4s in the lab"

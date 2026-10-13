@@ -1,0 +1,29 @@
+# Optic-lobe instance (formerly scMarco)
+title: "scMarco"
+theme: minty
+readme:
+  - readme/optic_lobe.md
+  - readme/usage.md
+
+datasets:
+  ozel_2021_new:
+    label: "Reclustered optic lobe: Ozel et al. (2021) / Treese et al. (2026)"
+    clusters: data/ozel_2021_new.clusters.h5ad
+    default: true
+  kurmangaliyev_2020_new:
+    label: "Reclustered optic lobe: Kurmangaliyev et al. (2020) / Treese et al. (2026)"
+    clusters: data/kurmangaliyev_2020_new.clusters.h5ad
+  ozel_2021:
+    label: "Optic lobe: Ozel et al. (2021)"
+    clusters: data/ozel_2021.clusters.h5ad
+
+gene_list:
+  flybase_tf:
+    path: "gene_lists/flybase_tfs.txt"
+    label: "FlyBase TFs"
+  mimic:
+    path: "gene_lists/MIMIC_CRIMIC_20230401.txt"
+    label: "RMCE swappable gene-specific lines"
+  split_gal4:
+    path: "gene_lists/20220804_split_gal4.txt"
+    label: "Split-GAL4s in the lab"
