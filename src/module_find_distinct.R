@@ -69,7 +69,7 @@ find_distinct_server <- function(id, ctx, coexp_session) {
           if (!ok) return(NULL)
           n_show <- max(1, as.integer(input$n_show), na.rm = TRUE)
           list(tbl = tbl, shown = top_per_cluster(tbl, n_show),
-               idents = idents, b = b, first = ctx$first_mark())
+               idents = idents, b = b, ds = ctx$ds(), first = ctx$first_mark())
         }
       )
 
@@ -78,7 +78,7 @@ find_distinct_server <- function(id, ctx, coexp_session) {
         if (is.null(res)) {
           return(message_plot("Select clusters and click 'Find genes'."))
         }
-        onoff_plot(ctx$ds(), res$b, unique(res$shown$gene), res$idents,
+        onoff_plot(res$ds, res$b, unique(res$shown$gene), res$idents,
                    show_pct = show_pct())
       })
 
@@ -100,7 +100,7 @@ find_distinct_server <- function(id, ctx, coexp_session) {
         res <- found()
         if (is.null(res)) return(NULL)
         tbl <- data.frame(
-          Cluster = res$tbl$cluster,
+          Cluster = cluster_label(res$ds, res$tbl$cluster),
           Gene = res$tbl$gene,
           `Clusters outside the selection also ON` = res$tbl$offtargets,
           check.names = FALSE
@@ -112,7 +112,7 @@ find_distinct_server <- function(id, ctx, coexp_session) {
             combo <- unique(c(res$first, res$tbl$gene[i]))
             others <- combo_offtarget_clusters(res$b, combo, exclude = res$tbl$cluster[i])
             if (length(others) == 0) "none" else
-              paste(others, collapse = ", ")
+              paste(cluster_label(res$ds, others), collapse = ", ")
           }, character(1))
         }
         tbl
@@ -131,7 +131,7 @@ find_distinct_server <- function(id, ctx, coexp_session) {
 
       ggdownload_server(
         "dl_fdist",
-        filename = ctx$idents,
+        filename = reactive(cluster_label(ctx$ds(), ctx$idents())),
         payload = onplot,
         height = function() plot_dims()[["height"]] * 2,
         width = function() plot_dims()[["width"]] * 2

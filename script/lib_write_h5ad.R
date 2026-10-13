@@ -80,7 +80,7 @@ write_cells_h5ad <- function(path, x, barcodes, cell_split, cell_cluster,
     storage.mode(m) <- "double"
     m
   })
-  names(obsm) <- paste0("X_", names(reductions))
+  if (length(obsm) > 0) names(obsm) <- paste0("X_", names(reductions))
 
   ad <- AnnData(
     X = x, obs = obs, var = data.frame(row.names = genes),
@@ -93,6 +93,35 @@ write_cells_h5ad <- function(path, x, barcodes, cell_split, cell_cluster,
   write_h5ad(ad, path, mode = "w")
   rechunk_h5ad(path, n_obs = nrow(obs), sparse_x = TRUE)
   invisible(path)
+}
+
+rewrite_obs <- function(path, edit) {
+  #' Replace only obs of an h5ad file, in place: layers and X are untouched.
+  #' edit: function(obs) returning the new obs, same rows in the same order.
+  ad <- suppressWarnings(read_h5ad(path, as = "HDF5AnnData", mode = "r+"))
+  on.exit(ad$close())
+  obs <- edit(ad$obs)
+  stopifnot(nrow(obs) == ad$n_obs())
+  ad$obs <- obs
+  invisible(path)
+}
+
+split_cluster_labels <- function(labels) {
+  #' Split legacy "name (id)" labels into ID and name. A label without a
+  #' trailing "(id)" is an unnamed cluster whose ID is the label itself.
+  m <- regmatches(labels, regexec("^(.*\\S)\\s+\\(([^()]+)\\)$", labels))
+  parsed <- lengths(m) == 3
+  id <- labels
+  name <- rep(NA_character_, length(labels))
+  id[parsed] <- vapply(m[parsed], `[`, "", 3)
+  name[parsed] <- vapply(m[parsed], `[`, "", 2)
+  data.frame(label = labels, id = id, name = name, stringsAsFactors = FALSE)
+}
+
+order_cluster_ids <- function(ids) {
+  #' Numeric IDs first in numeric order, then the others alphabetically
+  num <- suppressWarnings(as.numeric(ids))
+  ids[order(is.na(num), num, ids)]
 }
 
 rechunk_h5ad <- function(path, n_obs, sparse_x = FALSE, dense = character(0),

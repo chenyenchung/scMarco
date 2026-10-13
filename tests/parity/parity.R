@@ -109,6 +109,9 @@ for (tbl in c("ozel_2021_new", "kurmangaliyev_2020_new")) {
   ))
   stages <- sc_config$databases[[tbl]]$stages
   stopifnot(identical(stages, ds$splits))
+  # The legacy table knows clusters by their old "name (id)" labels, which
+  # the display labels must reproduce exactly
+  id_of_label <- setNames(ds$clusters, ds$cluster_labels)
   for (cut in c(0.5, 0.8)) {
     message("Querying ", tbl, " at cut ", cut, " (full table scan)...")
     prob_mat <- dbGetQuery(db, paste(
@@ -125,7 +128,7 @@ for (tbl in c("ozel_2021_new", "kurmangaliyev_2020_new")) {
 
       legacy <- sc$GetAllExpressedGenesForThis(
         prob_mat = prob_mat, stage = stages %in% sel, count = count,
-        stages = stages, ident = ident, output_limit = 1e6
+        stages = stages, ident = cluster_label(ds, ident), output_limit = 1e6
       )
       legacy <- legacy[!is.na(legacy)] # legacy pads with NA (bug 11)
       new <- from_cluster(b, ident, sel, count, limit = 1e6)
@@ -138,10 +141,11 @@ for (tbl in c("ozel_2021_new", "kurmangaliyev_2020_new")) {
                                      count = count, stages = stages)
       legacy <- sc$FindDistinctiveGenes(x, idents = idents, max_presence = 1)
       legacy <- legacy[legacy$distinct_gene != "Not found", ] # bug 10
-      new <- distinct_within(b, idents, sel, count)
+      stopifnot(all(idents %in% names(id_of_label)))
+      new <- distinct_within(b, unname(id_of_label[idents]), sel, count)
       report(case, "sc distinct      ",
              sort(paste(legacy$cluster, legacy$distinct_gene)),
-             sort(paste(new$cluster, new$gene)))
+             sort(paste(cluster_label(ds, new$cluster), new$gene)))
     }
   }
 }

@@ -35,7 +35,9 @@ for (ds_id in intersect(names(config$datasets), strsplit(Sys.getenv("ONLY", past
       # From cluster: pick a cluster with a candidate marker that has off-targets
       b_obj <- b()
       pick <- NULL
-      for (cl in ds_obj$clusters) {
+      # Try named clusters first so the labels are exercised
+      named <- !is.na(ds_obj$cluster_names)
+      for (cl in c(ds_obj$clusters[named], ds_obj$clusters[!named])) {
         fc <- from_cluster(b_obj, cl, character(0), 1, limit = 10,
                            genes = ds_obj$analysis_genes)
         if (length(fc) > 0 && any(fc >= 1 & fc <= 6)) {
@@ -49,6 +51,8 @@ for (ds_id in intersect(names(config$datasets), strsplit(Sys.getenv("ONLY", past
       session$setInputs(`fexp-do_fexp` = 1)
       expect_match(as.character(output$`fexp-selectTbl`$html), pick$gene, fixed = TRUE)
       render_ok(output$`fexp-pairs`)
+      expect_match(as.character(output$`fexp-pairs`$html),
+                   htmltools::htmlEscape(cluster_label(ds_obj, pick$cluster)), fixed = TRUE)
 
       # Select gene -> clusters sent to Find distinct, gene becomes first mark
       session$setInputs(`fexp-gc` = pick$gene, `fexp-pass` = 1)
@@ -63,7 +67,7 @@ for (ds_id in intersect(names(config$datasets), strsplit(Sys.getenv("ONLY", past
       dt_hits <- distinct_within(b_obj, clust, character(0), 1,
                                  genes = ds_obj$analysis_genes)
       for (cl in unique(dt_hits$cluster)) {
-        expect_match(hits_html, htmltools::htmlEscape(cl), fixed = TRUE)
+        expect_match(hits_html, htmltools::htmlEscape(cluster_label(ds_obj, cl)), fixed = TRUE)
       }
       if (nrow(dt_hits) > 0) {
         expect_match(hits_html, paste(pick$gene, "&amp; gene both ON"), fixed = TRUE)

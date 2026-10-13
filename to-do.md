@@ -72,14 +72,18 @@ The input formats are specified in [`docs/expected_input.md`](docs/expected_inpu
 - [ ] Support `--split-col` / `--cluster-col` (defaults `scmarco_split` /
   `scmarco_cluster`), with the `<split>@<cluster>` identities as fallback. Put
   input checks in `check_seurat_input()` with actionable errors, following the spec.
-- [ ] New `script/add_probability_h5ad.R`: reads the canonical long table or the
-  legacy wide RDS and validates it against the clusters file. It writes
+- [ ] New `script/add_probability_h5ad.R`: reads one mixture-model table per
+  split (`--prob Male=a.rds,Female=b.rds`, or one `.rds` with a named list),
+  whose columns are cluster IDs plus QC columns with a per-split `exprType`.
+  The legacy wide `<split>@<cluster>` RDS is accepted as a fallback. It
+  validates the tables against the clusters file and writes
   `prob`, `is_bimodal`, `bimodal_by_split` and `uns/scmarco/binarization`, then
   validates with `--stage binarized`.
 - [ ] Tests, extending `tests/testthat/test-seurat_import.R`:
   1. build, then validate (`built`);
   2. check that the app refuses the dataset;
-  3. add probabilities, from both the long table and the legacy RDS;
+  3. add probabilities, from per-split files, a named-list RDS and the legacy
+     wide RDS, including a gene that is bimodal in only one split;
   4. validate (`binarized`);
   5. check that `ds_load()` works and `from_cluster()` gives the expected result.
 

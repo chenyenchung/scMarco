@@ -167,6 +167,47 @@ h5ad_x_gene <- function(h, gene) {
 # Datasets: the object the app works with
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Cluster IDs and names
+# ---------------------------------------------------------------------------
+#
+# obs/cluster holds a stable cluster ID, the key for every join. The optional
+# obs/cluster_name holds an annotation (missing while unnamed). The app shows
+# "name (id)", or the bare ID, but always works on IDs.
+
+read_cluster_names <- function(obs, clusters, path = "") {
+  #' Named character vector id -> name (NA when unnamed) from obs/cluster_name
+  out <- setNames(rep(NA_character_, length(clusters)), clusters)
+  if (!"cluster_name" %in% names(obs)) return(out)
+  name <- trimws(as.character(obs$cluster_name))
+  name[!is.na(name) & name == ""] <- NA
+  id <- as.character(obs$cluster)
+  per_id <- tapply(name, id, function(v) unique(v[!is.na(v)]), simplify = FALSE)
+  conflict <- names(per_id)[lengths(per_id) > 1]
+  if (length(conflict) > 0) {
+    stop(path, ": obs/cluster_name differs between splits for cluster(s) ",
+         paste(head(conflict, 5), collapse = ", "))
+  }
+  named <- names(per_id)[lengths(per_id) == 1]
+  out[named] <- unlist(per_id[named])
+  out
+}
+
+format_cluster_labels <- function(ids, names) {
+  #' "name (id)" for named clusters, the bare ID otherwise
+  setNames(ifelse(is.na(names), ids, paste0(names, " (", ids, ")")), ids)
+}
+
+cluster_label <- function(ds, ids) {
+  #' Display labels of cluster IDs
+  unname(ds$cluster_labels[as.character(ids)])
+}
+
+cluster_choices <- function(ds, ids = ds$clusters) {
+  #' Choices for Shiny inputs: labels shown, IDs returned
+  setNames(as.character(ids), cluster_label(ds, ids))
+}
+
 .ds_cache <- new.env(parent = emptyenv())
 
 ds_load <- function(id, entry) {
@@ -188,6 +229,8 @@ ds_load <- function(id, entry) {
   if (is.null(splits)) splits <- levels(ch$obs$split)
   clusters <- levels(ch$obs$cluster)
   if (is.null(clusters)) clusters <- sort(unique(ch$obs$cluster))
+  clusters <- as.character(clusters)
+  cluster_names <- read_cluster_names(ch$obs, clusters, entry$clusters)
 
   bimodal <- NULL
   if ("bimodal_by_split" %in% ch$varm) {
@@ -211,7 +254,9 @@ ds_load <- function(id, entry) {
     clusters_h = ch,
     cells_h = cells,
     splits = as.character(splits),
-    clusters = as.character(clusters),
+    clusters = clusters,
+    cluster_names = cluster_names,
+    cluster_labels = format_cluster_labels(clusters, cluster_names),
     obs_split = as.character(ch$obs$split),
     obs_cluster = as.character(ch$obs$cluster),
     prob = h5ad_layer(ch, "prob"),

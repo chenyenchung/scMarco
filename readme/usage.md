@@ -37,7 +37,9 @@ releases, so **check that your list uses the same naming scheme as the data**.
 
 The cluster to start from (**From cluster**, exactly one), the clusters to tell
 apart (**Find distinct genes within**, two or more), or the clusters to
-highlight (**Plot expression trend**).
+highlight (**Plot expression trend**). Annotated clusters are shown as
+`name (id)`, e.g. `Mi4 (154)`, and unannotated ones by their ID; you can type
+either to search.
 
 #### Probability threshold
 

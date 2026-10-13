@@ -66,7 +66,7 @@ lineplot_server <- function(id, ctx) {
 
       ggdownload_server(
         "dl_lplot",
-        filename = reactive(c(request()$gene, request()$highlight)),
+        filename = reactive(c(request()$gene, cluster_label(request()$ds, request()$highlight))),
         payload = function() {
           req <- request()
           trend_plot(req$ds, req$gene, req$highlight, req$alpha, interactive = FALSE)

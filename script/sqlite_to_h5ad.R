@@ -10,6 +10,11 @@
 #
 # --genes N keeps only the first N genes (alphabetical); use it for fixtures.
 # The table is streamed in chunks, so the unindexed tables need only one scan.
+#
+# Legacy labels such as "Mi4 (154)" are written as they are. Split them into
+# cluster ID and name afterwards:
+#   Rscript script/set_cluster_names.R --clusters data/<table>.clusters.h5ad \
+#     --split-labels TRUE
 
 get_script_dir <- function() {
   arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)

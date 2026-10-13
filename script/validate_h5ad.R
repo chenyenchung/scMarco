@@ -36,6 +36,28 @@ for (col in c("split", "cluster")) {
 pairs <- paste(ch$obs$split, ch$obs$cluster, sep = "|")
 if (anyNA(ch$obs$split) || anyNA(ch$obs$cluster)) err("obs split/cluster contain missing values")
 if (anyDuplicated(pairs)) err("obs has duplicated split x cluster rows")
+if (!identical(rownames(ch$obs), pairs)) err("obs index is not \"<split>|<cluster>\"")
+if (any(grepl("|", levels(ch$obs$cluster), fixed = TRUE))) err("cluster IDs contain '|'")
+names_ok <- tryCatch(
+  read_cluster_names(ch$obs, levels(ch$obs$cluster)),
+  error = function(e) {
+    err("obs/cluster_name must be the same in every split of a cluster")
+    NULL
+  }
+)
+if (!is.null(names_ok) && all(is.na(names_ok))) {
+  embedded <- split_cluster_labels(levels(ch$obs$cluster))
+  if (any(!is.na(embedded$name))) {
+    warn(sum(!is.na(embedded$name)), " cluster IDs look like \"name (id)\" labels, e.g. ",
+         embedded$label[!is.na(embedded$name)][1], "; split them with ",
+         "script/set_cluster_names.R --split-labels TRUE")
+  }
+}
+empty <- setdiff(levels(ch$obs$cluster), as.character(ch$obs$cluster))
+if (length(empty) > 0) {
+  warn(length(empty), " cluster(s) have no rows in any split (always absent), e.g. ",
+       paste(head(empty, 5), collapse = ", "))
+}
 if (anyDuplicated(ch$genes)) err("var index (genes) is not unique")
 if (!is.null(meta$split_order) &&
     !setequal(as.character(meta$split_order), levels(ch$obs$split))) {

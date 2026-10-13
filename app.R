@@ -140,7 +140,7 @@ server <- function(input, output, session) {
 
   observeEvent(ds(), {
     updateSelectizeInput(session, "clusters_of_interest",
-                         choices = ds()$clusters, selected = character(0))
+                         choices = cluster_choices(ds()), selected = character(0))
     first_mark(character(0))
 
     has_trend <- ds()$has_mean && ds()$ordered_splits

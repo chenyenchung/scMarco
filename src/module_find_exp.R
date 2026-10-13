@@ -48,7 +48,7 @@ find_exp_server <- function(id, ctx) {
               pair_offtargets(b, idents, ctx$required(), ctx$min_n(),
                               limit = input$output_num, genes = ctx$genes())
             }
-            list(ident = idents, genes = genes, pairs = pairs)
+            list(ident = idents, genes = genes, pairs = pairs, ds = ctx$ds())
           })
           if (is.null(res)) return()
           result(res)
@@ -67,7 +67,7 @@ find_exp_server <- function(id, ctx) {
         if (length(res$genes) == 0) {
           return(tags$p(
             style = "margin: 10px",
-            "No gene passes the criteria in ", tags$b(res$ident), ". ",
+            "No gene passes the criteria in ", tags$b(cluster_label(res$ds, res$ident)), ". ",
             describe_splits(ctx$required(), ctx$min_n(), ctx$split_label())
           ))
         }
@@ -97,7 +97,7 @@ find_exp_server <- function(id, ctx) {
         names(tbl) <- c("Gene 1", "Gene 2", "Clusters where both are ON",
                         "Off-targets of each gene, summed")
         tagList(
-          tags$h4(style = "margin: 10px", "Best pairs for ", res$ident),
+          tags$h4(style = "margin: 10px", "Best pairs for ", cluster_label(res$ds, res$ident)),
           renderTable(tbl, striped = TRUE)
         )
       })
@@ -120,7 +120,7 @@ find_exp_server <- function(id, ctx) {
               checkboxGroupInput(
                 NS(id, "clust"),
                 "Which clusters to focus on?",
-                other_clust(),
+                cluster_choices(ctx$ds(), other_clust()),
                 selected = other_clust(),
                 inline = TRUE
               ),

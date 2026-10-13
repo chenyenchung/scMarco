@@ -25,6 +25,11 @@ theme_scmarco_tiles <- function() {
   )
 }
 
+relabel_clusters <- function(ds, f) {
+  #' A factor of cluster IDs with its levels shown as display labels
+  factor(f, levels = levels(f), labels = cluster_label(ds, levels(f)))
+}
+
 message_plot <- function(text) {
   ggplot(data.frame(message = text)) +
     geom_text(aes(label = message), x = 0.5, y = 0.5, size = 8,
@@ -71,17 +76,17 @@ onoff_plot <- function(ds, b, genes, idents, show_pct = FALSE) {
   df <- state_table(b, genes, clusters = idents)
   df$x <- factor(df$split, levels = ds$splits)
   df$y <- factor(df$gene, levels = rev(genes))
-  df$cluster <- factor(df$cluster, levels = idents)
+  df$panel <- factor(cluster_label(ds, df$cluster), levels = cluster_label(ds, idents))
   box_size <- if (show_pct) 20 else 12
 
   p <- ggplot(df, aes(x = x, y = y)) +
     tile_layers(df, box_size) +
-    facet_wrap(~cluster) +
+    facet_wrap(~panel) +
     theme_scmarco_tiles()
 
   if (show_pct && ds$has_pct) {
     pct <- ds_cluster_layer_long(ds, "pct_pos", genes, clusters = idents)
-    lab <- merge(df[df$state == "Expressed", c("gene", "cluster", "split", "x", "y")],
+    lab <- merge(df[df$state == "Expressed", c("gene", "cluster", "split", "x", "y", "panel")],
                  pct, by = c("gene", "cluster", "split"))
     lab$pct <- lab$value
     p <- p + pct_label_layer(lab, box_size)
@@ -161,7 +166,7 @@ coexp_plot <- function(ds, b, genes, show_pct = FALSE) {
     return(message_plot("None of the selected genes is expressed."))
   }
   df$x <- factor(df$split, levels = ds$splits)
-  df$y <- df$cluster
+  df$y <- relabel_clusters(ds, df$cluster)
   n_clust <- nlevels(df$cluster)
   box_size <- if (show_pct) {
     max(26 - 0.75 * n_clust, 12)
@@ -191,7 +196,7 @@ coexp_plot <- function(ds, b, genes, show_pct = FALSE) {
       on_df$cluster <- as.character(on_df$cluster)
       lab <- merge(on_df, lab, by = c("gene", "cluster", "split"))
       lab$gene <- factor(lab$gene, levels = levels(df$gene))
-      lab$y <- factor(lab$cluster, levels = levels(df$cluster))
+      lab$y <- relabel_clusters(ds, factor(lab$cluster, levels = levels(df$cluster)))
       p <- p + pct_label_layer(lab, box_size)
     }
   }
@@ -219,10 +224,12 @@ trend_plot <- function(ds, gene, highlight = character(0), lowlight_alpha = 0.2,
   if (nrow(df) == 0) return(message_plot("Gene not found."))
   df$split <- factor(df$split, levels = ds$splits)
   df$highlight <- df$cluster %in% highlight
+  df$cluster_label <- cluster_label(ds, df$cluster)
+  highlight <- cluster_label(ds, highlight)
   df <- df[order(df$highlight), ]
 
   if (interactive) {
-    p <- ggplot(df, aes(x = split, y = value, group = cluster, text = cluster)) +
+    p <- ggplot(df, aes(x = split, y = value, group = cluster, text = cluster_label)) +
       geom_line(aes(color = highlight, alpha = highlight)) +
       scale_color_manual(values = c(`FALSE` = "#333333", `TRUE` = "#C0392B"),
                          guide = "none") +
@@ -233,7 +240,7 @@ trend_plot <- function(ds, gene, highlight = character(0), lowlight_alpha = 0.2,
     return(plotly::ggplotly(p, tooltip = c("text", "y")))
   }
 
-  df$label <- ifelse(df$highlight, df$cluster, "Others")
+  df$label <- ifelse(df$highlight, df$cluster_label, "Others")
   df$label <- factor(df$label, levels = c(highlight, "Others"))
   colors <- c(viridisLite::viridis(length(highlight)), "#333333")
   names(colors) <- c(highlight, "Others")
@@ -263,7 +270,7 @@ umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
   coords <- ds_reduction(ds, key)
   df <- data.frame(
     dim1 = coords[, 1], dim2 = coords[, 2],
-    cluster = as.character(obs$cluster),
+    cluster = cluster_label(ds, obs$cluster),
     split = factor(as.character(obs$split), levels = ds$splits)
   )
   if (color_by == "gene") {

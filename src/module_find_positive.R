@@ -57,7 +57,8 @@ find_pos_server <- function(id, ctx) {
             )
           )
           if (!ok) return()
-          found(list(genes = input$gene, mode = input$mode, clusters = clusters))
+          found(list(genes = input$gene, mode = input$mode, clusters = clusters,
+                     ds = ctx$ds()))
 
           updateTabsetPanel(
             ctx$parent_session,
@@ -77,7 +78,7 @@ find_pos_server <- function(id, ctx) {
             style = "margin: 10px",
             checkboxGroupInput(
               NS(id, "select_clust"), "Clusters",
-              res$clusters, selected = res$clusters
+              cluster_choices(res$ds, res$clusters), selected = res$clusters
             )
           ),
           actionButton(NS(id, "pass"), "Select clusters")

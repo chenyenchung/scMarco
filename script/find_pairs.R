@@ -7,8 +7,9 @@
 #     --out results/x_pairs.csv [--cut 0.5] [--required Male,Female] \
 #     [--min-n 1] [--top 20]
 #
-# Output columns: cluster, gene1, gene2, offtargets (other clusters in which
-# both genes are ON in any split); rows sorted best first per cluster.
+# Output columns: cluster (ID), cluster_name (empty when unnamed), gene1, gene2,
+# offtargets (other clusters in which both genes are ON in any split),
+# single_offtargets; rows sorted best first per cluster.
 
 get_script_dir <- function() {
   arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
@@ -30,7 +31,7 @@ results <- lapply(ds$clusters, function(cl) {
   res <- pair_offtargets(b, cl, required, as.integer(args$`min-n`),
                          limit = as.integer(args$top), genes = ds$analysis_genes)
   if (nrow(res) == 0) return(NULL)
-  cbind(cluster = cl, res)
+  cbind(cluster = cl, cluster_name = unname(ds$cluster_names[cl]), res)
 })
 out <- do.call(rbind, results)
 dir.create(dirname(args$out), showWarnings = FALSE, recursive = TRUE)

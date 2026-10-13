@@ -56,7 +56,7 @@ that exists.
 
 | slot | content |
 |---|---|
-| `obs` | index `"<split>\|<cluster>"`; `split` (categorical, ordered when splits are ordered), `cluster` (categorical), optional `n_cells` |
+| `obs` | index `"<split>\|<cluster>"`; `split` (categorical, ordered when splits are ordered), `cluster` (categorical cluster ID), optional `cluster_name` (categorical; missing = unnamed), optional `n_cells` |
 | `var` | index = genes (sorted); optional `is_bimodal` (bool): genes used for marker finding |
 | `varm/bimodal_by_split` | optional genes × splits 0/1, column order in `uns/scmarco/bimodal_splits` |
 | `layers/prob` | mixture-model probability of expression (NaN = not modeled / non-bimodal) |
@@ -67,13 +67,20 @@ that exists.
 A cluster absent from a split simply has no row, so missing values never mean
 two things.
 
+`cluster` is a **stable ID** (e.g. `154`): every join uses it, and it never
+changes when a cluster is annotated. The annotation lives in `cluster_name`
+(the same in every split of a cluster), and the app shows `name (id)`, or the
+bare ID while a cluster is unnamed. Change names with
+`script/set_cluster_names.R` rather than editing the file: it checks the table
+and rewrites only `obs`.
+
 **`<id>.cells.h5ad`** (optional): enables the UMAP tab and the true
 co-expression percentage.
 
 | slot | content |
 |---|---|
 | `X` | log-normalized expression, cells × genes, **CSC** (fast per-gene reads) |
-| `obs` | index `"<split>\|<barcode>"`; `barcode`, `split`, `cluster` |
+| `obs` | index `"<split>\|<barcode>"`; `barcode`, `split`, `cluster` (ID; names come from the clusters file) |
 | `obsm/X_<name>` | reductions, cells × 2; NaN for cells outside a subset UMAP; `X_umap_full` is shown as "All cells" |
 
 Files are written with anndataR and then re-chunked with `h5repack`, so
@@ -87,8 +94,9 @@ reader (`src/backend_h5ad.R`); Python is not needed at runtime.
 | `seurat_to_h5ad.R` | new data: Seurat object (`<split>@<cluster>` identities) + mixture-model table + optional subset UMAPs |
 | `sqlite_to_h5ad.R` | migrate a legacy scMarco SQLite table |
 | `h5v1_to_h5ad.R` | migrate a legacy scMarco-Ding-lab `db.h5` dataset |
+| `set_cluster_names.R` | export or apply a `cluster_id`/`name` table; `--split-labels TRUE` turns legacy `name (id)` labels into ID + name |
 | `validate_h5ad.R` | check a dataset before deploying |
-| `find_pairs.R` | offline ranking of marker pairs for every cluster |
+| `find_pairs.R` | offline ranking of marker pairs for every cluster (CSV with `cluster` ID and `cluster_name`) |
 
 Each script prints its usage at the top of the file. The builders need the HDF5
 command-line tools (`h5repack`) for re-chunking.
