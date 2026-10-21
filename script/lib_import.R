@@ -55,6 +55,60 @@ seurat_labels <- function(meta, ident, split_col = "scmarco_split",
   list(split = as.character(split), cluster = as.character(cluster))
 }
 
+retag_seurat_v3 <- function(x) {
+  #' Seurat v3 objects saved before SeuratObject existed name their classes'
+  #' package "Seurat"; point them to SeuratObject so it can load them without
+  #' Seurat. Walks S4 slots and plain lists only. UpdateSeuratObject() and
+  #' SeuratObject's internal UpdateClassPkg() both look the classes up first
+  #' and fail with "unable to load required package 'Seurat'" (SeuratObject 5.4.0).
+  if (isS4(x)) {
+    cl <- class(x)
+    if (identical(attr(cl, "package"), "Seurat")) attr(cl, "package") <- "SeuratObject"
+    slots <- attributes(x)
+    slots$class <- NULL
+    for (n in names(slots)) attr(x, n) <- retag_seurat_v3(slots[[n]])
+    class(x) <- cl
+  } else if (is.list(x) && identical(class(x), "list")) {
+    for (i in seq_along(x)) if (!is.null(x[[i]])) x[[i]] <- retag_seurat_v3(x[[i]])
+  }
+  x
+}
+
+read_seurat <- function(path) {
+  #' readRDS() a Seurat object; objects from before SeuratObject (Seurat v3)
+  #' are retagged and updated so SeuratObject alone can read them.
+  obj <- readRDS(path)
+  if (identical(attr(class(obj), "package"), "Seurat")) {
+    message(basename(path), ": Seurat ", as.character(obj@version),
+            " object; updating it for SeuratObject")
+    obj <- suppressWarnings(suppressMessages(
+      SeuratObject::UpdateSeuratObject(retag_seurat_v3(obj))
+    ))
+  }
+  obj
+}
+
+parse_seurat_arg <- function(arg) {
+  #' --seurat value -> object path(s). "obj.rds": one object, unnamed.
+  #' "P15=a.rds,P30=b.rds": one object per split, named by split.
+  if (!grepl("=", arg, fixed = TRUE)) {
+    if (!file.exists(arg)) fail("Seurat object not found: ", arg)
+    return(arg)
+  }
+  pairs <- strsplit(strsplit(arg, ",", fixed = TRUE)[[1]], "=", fixed = TRUE)
+  if (any(lengths(pairs) != 2)) {
+    fail("--seurat must be one .rds or look like Split1=file1.rds,Split2=file2.rds; got ", arg)
+  }
+  files <- vapply(pairs, `[`, "", 2)
+  names(files) <- vapply(pairs, `[`, "", 1)
+  if (anyDuplicated(names(files))) {
+    fail("Split(s) given twice in --seurat: ", first_few(unique(names(files)[duplicated(names(files))])))
+  }
+  missing <- files[!file.exists(files)]
+  if (length(missing) > 0) fail("Seurat object(s) not found: ", first_few(missing))
+  files
+}
+
 check_labels <- function(split, cluster) {
   #' Name rules for split and cluster labels (stop on the first broken rule)
   for (kind in c("split", "cluster")) {
@@ -158,6 +212,7 @@ assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes) {
     if (!is.data.frame(tab) && !is.matrix(tab)) {
       fail(where, "expected a data.frame with genes as row names, got ", class(tab)[1])
     }
+    text_matrix <- is.matrix(tab) && is.character(tab)
     tab <- as.data.frame(tab, check.names = FALSE, stringsAsFactors = FALSE)
     if (!"exprType" %in% colnames(tab)) {
       fail(where, "no exprType column, so bimodal genes cannot be told apart")
@@ -194,6 +249,15 @@ assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes) {
     }
     values <- as.matrix(tab[, is_cl, drop = FALSE])
     if (is.logical(values) && all(is.na(values))) storage.mode(values) <- "double"
+    if (text_matrix) {
+      # the mixture model's raw output is a character matrix: exprType makes
+      # every column text, so the numbers are parsed here
+      num <- suppressWarnings(as.numeric(values))
+      if (any(is.na(num) & !is.na(values))) {
+        fail(where, "probability columns must be numeric")
+      }
+      values <- matrix(num, nrow(values), dimnames = dimnames(values))
+    }
     if (length(values) > 0 && !is.numeric(values)) {
       fail(where, "probability columns must be numeric")
     }

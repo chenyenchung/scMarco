@@ -165,8 +165,11 @@ split_cluster_labels <- function(labels) {
 }
 
 order_cluster_ids <- function(ids) {
-  #' Numeric IDs first in numeric order, then the others alphabetically
-  num <- suppressWarnings(as.numeric(ids))
+  #' IDs starting with a number first, by that number (so "1+2" follows "1"),
+  #' then the others alphabetically
+  lead <- regmatches(ids, regexpr("^[0-9]+(\\.[0-9]+)?", ids))
+  num <- rep(NA_real_, length(ids))
+  num[grepl("^[0-9]", ids)] <- as.numeric(lead)
   ids[order(is.na(num), num, ids)]
 }
 

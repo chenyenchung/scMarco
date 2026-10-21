@@ -6,16 +6,19 @@ readme:
   - readme/usage.md
 
 datasets:
-  ozel_2021_new:
-    label: "Reclustered optic lobe: Ozel et al. (2021) / Treese et al. (2026)"
-    clusters: data/ozel_2021_new.clusters.h5ad
-    default: true
-  kurmangaliyev_2020_new:
-    label: "Reclustered optic lobe: Kurmangaliyev et al. (2020) / Treese et al. (2026)"
-    clusters: data/kurmangaliyev_2020_new.clusters.h5ad
   ozel_2021:
-    label: "Optic lobe: Ozel et al. (2021)"
+    label: "Optic lobe, multiome annotation: Ozel et al. (2021)"
     clusters: data/ozel_2021.clusters.h5ad
+    cells: data/ozel_2021.cells.h5ad
+    default: true
+  Kurmangaliyev_2020:
+    label: "Optic lobe, multiome annotation: Kurmangaliyev et al. (2020)"
+    clusters: data/Kurmangaliyev_2020.clusters.h5ad
+    cells: data/Kurmangaliyev_2020.cells.h5ad
+  ozel_2021_simon_2026:
+    label: "Optic lobe: Ozel et al. (2021), annotated by Simon et al. (2026)"
+    clusters: data/ozel_2021_simon_2026.clusters.h5ad
+    cells: data/ozel_2021_simon_2026.cells.h5ad
   dmel_mixed:
     label: "dsx neurons: male and female melanogaster"
     clusters: data/dmel_mixed.clusters.h5ad

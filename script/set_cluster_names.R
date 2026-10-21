@@ -18,6 +18,12 @@
 #   # too so its cluster IDs stay in sync.
 #   Rscript script/set_cluster_names.R --clusters data/x.clusters.h5ad \
 #     [--cells data/x.cells.h5ad] --split-labels TRUE
+#
+#   # give every cluster a new ID (and name) from a table with the columns
+#   # cluster_id (current ID), new_id and optional name (empty = unnamed);
+#   # every current cluster must be listed. Rows and data are unchanged.
+#   Rscript script/set_cluster_names.R --clusters data/x.clusters.h5ad \
+#     [--cells data/x.cells.h5ad] --ids ids.tsv
 
 get_script_dir <- function() {
   arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
@@ -28,16 +34,16 @@ source(file.path(get_script_dir(), "lib_write_h5ad.R"))
 source(file.path(root, "src", "backend_h5ad.R"))
 
 args <- parse_cli(list(
-  clusters = NA, cells = "", names = "", export = "", `split-labels` = "FALSE"
+  clusters = NA, cells = "", names = "", export = "", ids = "", `split-labels` = "FALSE"
 ))
 split_labels <- as.logical(args$`split-labels`)
 modes <- c(export = nzchar(args$export), names = nzchar(args$names),
-           split = isTRUE(split_labels))
+           split = isTRUE(split_labels), ids = nzchar(args$ids))
 if (sum(modes) != 1) {
-  stop("Give exactly one of --export, --names or --split-labels TRUE")
+  stop("Give exactly one of --export, --names, --ids or --split-labels TRUE")
 }
-if (nzchar(args$cells) && !modes[["split"]]) {
-  stop("--cells is only used with --split-labels (cells files store IDs only)")
+if (nzchar(args$cells) && !modes[["split"]] && !modes[["ids"]]) {
+  stop("--cells is only used with --split-labels or --ids (cells files store IDs only)")
 }
 
 ch <- h5ad_open(args$clusters)
@@ -113,16 +119,37 @@ if (modes[["names"]]) {
   quit(status = 0)
 }
 
-# --- Split legacy "name (id)" labels -------------------------------------------
-if (any(!is.na(current))) {
-  stop(args$clusters, " already has cluster names; --split-labels is for ",
-       "files whose cluster labels still embed them")
+# --- New IDs: split legacy "name (id)" labels, or apply an ID table --------
+if (modes[["split"]]) {
+  if (any(!is.na(current))) {
+    stop(args$clusters, " already has cluster names; --split-labels is for ",
+         "files whose cluster labels still embed them")
+  }
+  parts <- split_cluster_labels(clusters)
+} else {
+  tbl <- read.delim(args$ids, colClasses = "character", na.strings = character(0),
+                    check.names = FALSE, quote = "")
+  if (!all(c("cluster_id", "new_id") %in% names(tbl))) {
+    stop(args$ids, " needs the columns cluster_id and new_id (tab-separated)")
+  }
+  if (!"name" %in% names(tbl)) tbl$name <- ""
+  tbl[] <- lapply(tbl, trimws)
+  unknown <- setdiff(tbl$cluster_id, clusters)
+  missing <- setdiff(clusters, tbl$cluster_id)
+  if (length(unknown) > 0 || length(missing) > 0 || anyDuplicated(tbl$cluster_id)) {
+    stop(args$ids, " must list every cluster ID of ", args$clusters, " exactly once",
+         if (length(unknown) > 0) paste0("\nUnknown: ", paste(head(unknown, 10), collapse = ", ")),
+         if (length(missing) > 0) paste0("\nMissing: ", paste(head(missing, 10), collapse = ", ")))
+  }
+  if (any(tbl$new_id == "")) stop("Empty new_id for: ", paste(tbl$cluster_id[tbl$new_id == ""], collapse = ", "))
+  tbl <- tbl[match(clusters, tbl$cluster_id), ]
+  parts <- data.frame(label = tbl$cluster_id, id = tbl$new_id,
+                      name = ifelse(tbl$name == "", NA, tbl$name), stringsAsFactors = FALSE)
 }
-parts <- split_cluster_labels(clusters)
 dup <- unique(parts$id[duplicated(parts$id)])
 if (length(dup) > 0) {
-  stop("Splitting would give duplicate cluster IDs: ", paste(head(dup, 10), collapse = ", "),
-       "\nLabels: ", paste(parts$label[parts$id %in% dup], collapse = ", "))
+  stop("Duplicate new cluster IDs: ", paste(head(dup, 10), collapse = ", "),
+       "\nOld IDs: ", paste(parts$label[parts$id %in% dup], collapse = ", "))
 }
 if (any(grepl("|", parts$id, fixed = TRUE))) stop("Cluster IDs must not contain '|'")
 lost <- parts$label[!is.na(parts$name) & parts$label %in% no_rows]
@@ -143,7 +170,7 @@ if (nzchar(args$cells)) {
          paste(head(stray, 5), collapse = ", "))
   }
 }
-if (all(parts$id == parts$label)) {
+if (modes[["split"]] && all(parts$id == parts$label)) {
   message("No label embeds an ID; nothing to change")
   quit(status = 0)
 }
@@ -160,7 +187,11 @@ rewrite_obs(args$clusters, function(obs) {
 if (!is.null(xh)) rewrite_obs(args$cells, relabel)
 
 named <- !is.na(parts$name) & !parts$label %in% lost
-message(sprintf("Split %d labels into ID + name; %d bare IDs kept as unnamed", sum(named), sum(!named)))
+if (modes[["split"]]) {
+  message(sprintf("Split %d labels into ID + name; %d bare IDs kept as unnamed", sum(named), sum(!named)))
+} else {
+  message(sprintf("Gave %d clusters new IDs; %d named, %d unnamed", nrow(parts), sum(named), sum(!named)))
+}
 for (i in head(which(named), 5)) {
   message(sprintf("  %s -> ID %s, name %s", parts$label[i], parts$id[i], parts$name[i]))
 }

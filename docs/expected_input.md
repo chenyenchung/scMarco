@@ -20,12 +20,21 @@ scripts and produces binarized files directly; see the README.
 
 A single `.rds` file readable by `readRDS()` holding a Seurat v4 or v5
 object. Only the SeuratObject package is needed; full Seurat isn't required.
+Seurat v3 objects saved before SeuratObject existed (e.g. the Ozel et al. 2021
+submission objects) are updated for SeuratObject on read.
+
+When each split was saved as its own object (e.g. one per stage), pass them
+all as `--seurat P15=P15.rds,P30=P30.rds,...`: the split is the name, and
+`--split-col` is not used. The genes are the union of the objects' genes; a
+gene missing from an object counts as 0 in its cells. Splits keep the order
+given unless `--split-order` says otherwise. An object's `umap` reduction is
+stored as `obsm/X_<split>`.
 
 ### Expression
 
 | Requirement | Details |
 |---|---|
-| Assay | The default assay (usually `RNA`). |
+| Assay | The default assay (usually `RNA`); another with `--assay`, e.g. `--assay RNA` when the default is `integrated`. |
 | Counts | **Raw counts**: non-negative integers, genes × cells. In v5, the `counts` layer (split layers must be joined with `JoinLayers()` first); in v4, the `counts` slot. |
 | Normalization | Done by the builder, as Seurat's LogNormalize: `log1p(counts / library size × 1e4)`. Any `data` layer already present is ignored. |
 | Genes | Unique, non-empty names; the builder sorts them. They must use the same symbols as the mixture-model output. |
@@ -42,6 +51,9 @@ named.
 |---|---|
 | Preferred | Metadata columns `scmarco_split` and `scmarco_cluster`; other names with `--split-col` / `--cluster-col`. `--split-col none` puts every cell in one split named `all`. A column named with either option must exist. |
 | Fallback (legacy) | `Idents(obj)` of the form `<split>@<cluster>`, exactly one `@`. Used only when neither default column exists and neither option is given. |
+
+`--exclude-clusters 0` drops the cells of the listed cluster IDs before
+anything else, e.g. cells the study discarded but kept in the object.
 
 Name rules, checked with actionable errors (`check_labels()` in `script/lib_import.R`;
 `validate_h5ad.R` checks them again):
@@ -74,6 +86,21 @@ Listed clusters get the given name; an empty name clears it; unlisted clusters
 keep theirs. Unknown or repeated IDs are errors. The app shows `T4b (151)`
 for a named cluster and `151` for an unnamed one.
 
+To change the IDs themselves (e.g. a dataset built with annotation names as
+IDs), give every cluster a new ID, and optionally a name, in one step. Pass the
+cells file too so its IDs stay in sync; the data are not touched:
+
+```
+cluster_id	new_id	name
+Dm4	4	Dm4
+G_PsCrtrg	1+2	PCG
+```
+
+```sh
+Rscript script/set_cluster_names.R --clusters data/<id>.clusters.h5ad \
+  --cells data/<id>.cells.h5ad --ids ids.tsv
+```
+
 ### Split order
 
 | Option | Meaning |
@@ -88,6 +115,10 @@ for a named cluster and `151` for an unnamed one.
 |---|---|
 | A reduction named `umap` on the object (all cells) | `obsm/X_umap_full`, shown as "All cells" |
 | `--umaps <folder>`: one `.rds` Seurat object per subset, each with a `umap` reduction | `obsm/X_<name>`, where `<name>` is the file name before the first `_` (e.g. `ANm_umap.rds` → `X_ANm`) |
+
+`--reduction tsne` stores that reduction instead of `umap`, as
+`obsm/X_tsne_full` (one object) or `obsm/X_<split>_tsne` (one object per
+split); the plots label its axes tSNE.
 
 Subset cells are matched to the main object **by barcode**. Cells outside a
 subset get NaN coordinates, and unmatched barcodes are ignored. All reductions
@@ -115,6 +146,11 @@ is used as is: a `data.frame` (`.rds`) with
   `bimodal.off_level`, `bimodal.sd`, `bimodal.pi`, `unimodal.level`,
   `unimodal.sd` and `exprType`. Only `exprType` is required. A gene is
   bimodal **in this split** when its `exprType` is `"bimodal"`.
+
+The model's raw output, a character matrix (every column is text because of
+`exprType`), is accepted too: its numbers are parsed, and any other text in a
+probability column is an error. In a `data.frame`, probability columns must be
+numeric.
 
 Every column that is not a QC column is a cluster. Since the split comes from
 which table is read, the column names need no separator, and a cluster ID may

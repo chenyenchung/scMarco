@@ -233,6 +233,13 @@ test_that("assemble_prob enforces the rules in the spec", {
   bad <- f; rownames(bad) <- NULL
   expect_error(run(list(Male = m, Female = bad)), "row names")
 
+  # the mixture model's raw character matrix is parsed; non-numbers still fail
+  txt <- as.matrix(f)
+  p <- run(list(Male = m, Female = txt))
+  expect_equal(p$prob, run(list(Male = m, Female = f))$prob)
+  txt[1, "1"] <- "high"
+  expect_error(run(list(Male = m, Female = txt)), "must be numeric")
+
   # gaps are warnings: never ON / non-bimodal
   expect_warning(p <- run(list(Male = m[, colnames(m) != "10"], Female = f)),
                  "1 cluster\\(s\\) with cells have no column.*: 10")
@@ -255,4 +262,64 @@ test_that("legacy wide tables split into per-split tables", {
   expect_equal(t$F[["1"]], c(0.75, 1))
   wide$oops <- 1
   expect_error(legacy_wide_to_split_tables(wide), "'<split>@<cluster>'.*oops")
+})
+
+test_that("build from one object per split with different genes and assays", {
+  skip_if_not_installed("SeuratObject")
+  dir <- withr::local_tempdir()
+  toy <- toy_seurat(dir)
+  obj <- readRDS(toy$path)
+  # Female lacks geneD; both objects default to another assay than the counts
+  for (s in c("Male", "Female")) {
+    keep <- if (s == "Female") GENES[1:3] else GENES
+    part <- CreateSeuratObject(
+      Matrix::Matrix(toy$counts[keep, toy$split == s], sparse = TRUE)
+    )
+    part$cl <- toy$cluster[toy$split == s]
+    part[["other"]] <- CreateAssayObject(counts = part[["RNA"]]$counts[1:2, ])
+    DefaultAssay(part) <- "other"
+    saveRDS(part, file.path(dir, paste0(s, ".rds")))
+  }
+  res <- run_script("seurat_to_h5ad.R", c(
+    "--seurat", sprintf("Male=%s,Female=%s", file.path(dir, "Male.rds"),
+                        file.path(dir, "Female.rds")),
+    "--cluster-col", "cl", "--assay", "RNA", "--dataset", "toy", "--out-dir", dir
+  ))
+  expect_true(res$ok, info = log_of(res))
+  clusters <- file.path(dir, "toy.clusters.h5ad")
+  cells <- file.path(dir, "toy.cells.h5ad")
+  val <- run_script("validate_h5ad.R", c("--clusters", clusters, "--cells", cells,
+                                         "--stage", "built"))
+  expect_true(val$ok, info = log_of(val))
+
+  saveRDS(male_prob(), file.path(dir, "male.rds"))
+  saveRDS(female_prob()[1:3, ], file.path(dir, "female.rds"))
+  res <- run_script("add_probability_h5ad.R", c(
+    "--clusters", clusters,
+    "--prob", sprintf("Male=%s,Female=%s", file.path(dir, "male.rds"),
+                      file.path(dir, "female.rds"))
+  ))
+  expect_true(res$ok, info = log_of(res))
+  # splits keep the --seurat order
+  ds <- expect_toy_binarized(clusters, cells)
+  expect_equal(ds$all_genes, GENES)
+
+  pct <- ds_cluster_layer_long(ds, "pct_pos", "geneA", clusters = "1")
+  in_cl <- toy$split == "Male" & toy$cluster == "1"
+  expect_equal(pct$value[pct$split == "Male"], mean(toy$counts["geneA", in_cl] > 0))
+  pct <- ds_cluster_layer_long(ds, "pct_pos", "geneD", clusters = "1")
+  expect_equal(pct$value[pct$split == "Female"], 0)
+  # library size counts only the Female object's genes
+  fem <- toy$counts[1:3, toy$split == "Female"]
+  mean_a <- ds_cluster_layer_long(ds, "mean_lognorm", "geneA", clusters = "1")
+  expect_equal(mean_a$value[mean_a$split == "Female"],
+               mean(log1p(fem["geneA", ] / colSums(fem) * 1e4)), tolerance = 1e-6)
+
+  expect_error(parse_seurat_arg("A=x.rds,A=y.rds"), "given twice")
+  res <- run_script("seurat_to_h5ad.R", c(
+    "--seurat", sprintf("Male=%s", file.path(dir, "Male.rds")),
+    "--split-col", "x", "--dataset", "toy2", "--out-dir", dir
+  ))
+  expect_false(res$ok)
+  expect_match(log_of(res), "--split-col cannot be used")
 })

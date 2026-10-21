@@ -35,10 +35,10 @@ readme:                      # Markdown files shown in "Read Me", in order
   - readme/optic_lobe.md
   - readme/usage.md
 datasets:
-  ozel_2021_new:             # id
-    label: "Reclustered optic lobe: ..."
-    clusters: data/ozel_2021_new.clusters.h5ad   # required
-    cells: data/ozel_2021_new.cells.h5ad         # optional
+  ozel_2021:                 # id
+    label: "Optic lobe, multiome annotation: ..."
+    clusters: data/ozel_2021.clusters.h5ad       # required
+    cells: data/ozel_2021.cells.h5ad             # optional
     default: true            # selected at startup
     split_order: [...]       # optional overrides of the file's uns/scmarco
     split_label: stage
@@ -91,11 +91,11 @@ reader (`src/backend_h5ad.R`); Python is not needed at runtime.
 
 | script | use |
 |---|---|
-| `seurat_to_h5ad.R` | new data: Seurat object (split and cluster ID in metadata columns) + optional subset UMAPs → a *built* dataset; `--prob` also binarizes it |
+| `seurat_to_h5ad.R` | new data: Seurat object (split and cluster ID in metadata columns), or one object per split (`--seurat P15=a.rds,P30=b.rds`), + optional subset UMAPs → a *built* dataset; `--prob` also binarizes it |
 | `add_probability_h5ad.R` | binarize a built dataset with the mixture-model output, one table per split; the app needs this step |
 | `sqlite_to_h5ad.R` | migrate a legacy scMarco SQLite table |
 | `h5v1_to_h5ad.R` | migrate a legacy scMarco-Ding-lab `db.h5` dataset |
-| `set_cluster_names.R` | export or apply a `cluster_id`/`name` table; `--split-labels TRUE` turns legacy `name (id)` labels into ID + name |
+| `set_cluster_names.R` | export or apply a `cluster_id`/`name` table; `--ids` gives every cluster a new ID (and name) from a `cluster_id`/`new_id`/`name` table; `--split-labels TRUE` turns legacy `name (id)` labels into ID + name |
 | `validate_h5ad.R` | check a dataset before deploying (`--stage built` for one without probabilities yet) |
 | `find_pairs.R` | offline ranking of marker pairs for every cluster (CSV with `cluster` ID and `cluster_name`) |
 

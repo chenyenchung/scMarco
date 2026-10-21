@@ -40,8 +40,8 @@ test_that("legacy labels split into ID and name", {
   ))
   expect_equal(parts$id, c("154", "108", "45", "186", "Apop"))
   expect_equal(parts$name, c("Mi4", NA, "Tm27(Y)", "G/LQ1 (in pupae)", NA))
-  expect_equal(order_cluster_ids(c("NB", "108", "11", "2", "Apop")),
-               c("2", "11", "108", "Apop", "NB"))
+  expect_equal(order_cluster_ids(c("NB", "108", "11", "2", "Apop", "1+2", "1")),
+               c("1", "1+2", "2", "11", "108", "Apop", "NB"))
 })
 
 test_that("labels show name (id), or the bare ID when unnamed", {
@@ -139,4 +139,34 @@ test_that("clusters with no rows in any split keep only their ID", {
   res <- run_script("set_cluster_names.R", c("--clusters", cpath, "--names", tsv))
   expect_false(res$ok)
   expect_true(any(grepl("no rows in any split", res$log)))
+})
+
+test_that("--ids gives new IDs and names to both files and keeps the data", {
+  dir <- withr::local_tempdir()
+  suppressMessages(suppressWarnings(p <- make_legacy_pair(dir)))
+  tsv <- file.path(dir, "ids.tsv")
+  writeLines(c("cluster_id\tnew_id\tname", "12\t5+6\tSPG", "Mi4 (154)\t154\tMi4",
+               "Tm27(Y) (9)\t9\t"), tsv)
+  res <- run_script("set_cluster_names.R",
+                    c("--clusters", p$clusters, "--cells", p$cells, "--ids", tsv))
+  expect_true(res$ok, info = paste(res$log, collapse = "\n"))
+
+  ds <- ds_load("toy_ids", list(label = "Toy", clusters = p$clusters, cells = p$cells))
+  expect_equal(ds$clusters, c("5+6", "9", "154"))
+  expect_equal(unname(ds$cluster_labels), c("SPG (5+6)", "9", "Mi4 (154)"))
+  expect_equal(rownames(ds$clusters_h$obs), c("F|5+6", "F|154", "F|9", "M|5+6", "M|9"))
+  expect_equal(unname(ds$prob[, "a"]), p$prob[, 1])
+  expect_equal(as.character(ds_cells_obs(ds)$cluster), c("154", "5+6", "5+6", "9"))
+  res <- run_script("validate_h5ad.R", c("--clusters", p$clusters, "--cells", p$cells))
+  expect_true(res$ok, info = paste(res$log, collapse = "\n"))
+
+  # every cluster must be listed, and new IDs must be unique
+  writeLines(c("cluster_id\tnew_id", "9\t1"), tsv)
+  res <- run_script("set_cluster_names.R", c("--clusters", p$clusters, "--ids", tsv))
+  expect_false(res$ok)
+  expect_true(any(grepl("Missing", res$log)))
+  writeLines(c("cluster_id\tnew_id", "5+6\t1", "9\t1", "154\t2"), tsv)
+  res <- run_script("set_cluster_names.R", c("--clusters", p$clusters, "--ids", tsv))
+  expect_false(res$ok)
+  expect_true(any(grepl("Duplicate", res$log)))
 })

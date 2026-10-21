@@ -259,7 +259,12 @@ trend_plot <- function(ds, gene, highlight = character(0), lowlight_alpha = 0.2,
 
 reduction_label <- function(key) {
   name <- sub("^X_", "", key)
-  ifelse(name == "umap_full", "All cells", name)
+  ifelse(grepl("^(umap|tsne)_full$", name), "All cells", name)
+}
+
+reduction_axis <- function(key) {
+  #' Axis title stem: reductions named *tsne* (seurat_to_h5ad.R --reduction tsne) are tSNE
+  if (grepl("tsne", key, ignore.case = TRUE)) "tSNE" else "UMAP"
 }
 
 umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
@@ -315,7 +320,8 @@ umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
     }
   }
   if (facet) p <- p + facet_wrap(~split)
-  p + labs(title = title, x = "UMAP 1", y = "UMAP 2") + base
+  axis <- reduction_axis(key)
+  p + labs(title = title, x = paste(axis, 1), y = paste(axis, 2)) + base
 }
 
 umap_size <- function(n_splits, facet) {
