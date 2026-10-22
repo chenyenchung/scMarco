@@ -109,6 +109,26 @@ parse_seurat_arg <- function(arg) {
   files
 }
 
+seurat_reduction <- function(obj, red_name, cells, context = "") {
+  #' First two dimensions of reduction `red_name` for `cells`. A missing
+  #' reduction is an error that lists the object's reductions.
+  #' context: prefix for the error, e.g. "P15: "
+  if (!red_name %in% SeuratObject::Reductions(obj)) {
+    found <- SeuratObject::Reductions(obj)
+    fail(context, "no reduction named '", red_name, "'. Reductions on the object: ",
+         if (length(found) > 0) paste(found, collapse = ", ") else "none",
+         ". Pass --reduction <name> to store one of them, or --reduction none to build without one.")
+  }
+  SeuratObject::Embeddings(obj, red_name)[cells, 1:2, drop = FALSE]
+}
+
+reduction_key <- function(red_name, split = NULL) {
+  #' obsm name (without "X_") of a reduction: "<red>_full" for one object,
+  #' "<split>" (umap) or "<split>_<red>" for one object per split
+  if (is.null(split)) return(paste0(red_name, "_full"))
+  if (red_name == "umap") split else paste0(split, "_", red_name)
+}
+
 check_labels <- function(split, cluster) {
   #' Name rules for split and cluster labels (stop on the first broken rule)
   for (kind in c("split", "cluster")) {

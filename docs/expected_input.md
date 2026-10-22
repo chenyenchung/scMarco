@@ -118,7 +118,16 @@ Rscript script/set_cluster_names.R --clusters data/<id>.clusters.h5ad \
 
 `--reduction tsne` stores that reduction instead of `umap`, as
 `obsm/X_tsne_full` (one object) or `obsm/X_<split>_tsne` (one object per
-split); the plots label its axes tSNE.
+split); the plots label its axes tSNE. The build stops if an object lacks the
+named reduction and lists the reductions it has (e.g. `umap.rna` or
+`wnn.umap`); pass that name to `--reduction`, or `--reduction none` to
+build without one.
+
+Reductions named after a split (`X_<split>` or `X_<split>_<reduction>`) are
+treated as computed separately for each split. The UMAP tab shows each group as
+one entry, "Each <split label> separately". It replaces "Split by" with a
+multi-select of the splits to show, and draws each split as its own panel with
+its own axes.
 
 Subset cells are matched to the main object **by barcode**. Cells outside a
 subset get NaN coordinates, and unmatched barcodes are ignored. All reductions

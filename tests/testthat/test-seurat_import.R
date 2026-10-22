@@ -280,11 +280,16 @@ test_that("build from one object per split with different genes and assays", {
     DefaultAssay(part) <- "other"
     saveRDS(part, file.path(dir, paste0(s, ".rds")))
   }
-  res <- run_script("seurat_to_h5ad.R", c(
+  build_args <- c(
     "--seurat", sprintf("Male=%s,Female=%s", file.path(dir, "Male.rds"),
                         file.path(dir, "Female.rds")),
     "--cluster-col", "cl", "--assay", "RNA", "--dataset", "toy", "--out-dir", dir
-  ))
+  )
+  # A missing reduction is an error, not a silently missing UMAP
+  res <- run_script("seurat_to_h5ad.R", build_args)
+  expect_false(res$ok)
+  expect_match(log_of(res), "Male: no reduction named 'umap'. Reductions on the object: none", fixed = TRUE)
+  res <- run_script("seurat_to_h5ad.R", c(build_args, "--reduction", "none"))
   expect_true(res$ok, info = log_of(res))
   clusters <- file.path(dir, "toy.clusters.h5ad")
   cells <- file.path(dir, "toy.cells.h5ad")

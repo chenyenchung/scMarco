@@ -103,14 +103,30 @@ for (ds_id in intersect(names(config$datasets), strsplit(Sys.getenv("ONLY", past
       }
 
       if (length(ds_obj$reductions) > 0) {
-        for (viz in c("gene", "cluster", "split")) {
-          session$setInputs(
-            `umap-umap_selection` = ds_obj$reductions[1], `umap-viz_type` = viz,
-            `umap-gene_selection` = pick$gene, `umap-split_by_group` = TRUE,
-            `umap-show_legend` = FALSE,
-            `umap-plot_umap` = match(viz, c("gene", "cluster", "split"))
-          )
-          render_ok(output$`umap-umap_plot`)
+        choices <- reduction_choices(ds_obj)
+        n_plot <- 0
+        # The first shared reduction and every per-split group
+        for (choice in unique(c(choices[!startsWith(choices, "split:")][1],
+                                choices[startsWith(choices, "split:")]))) {
+          if (is.na(choice)) next
+          per_split <- startsWith(choice, "split:")
+          shown <- head(names(resolve_reduction(ds_obj, choice)), 2)
+          for (viz in if (per_split) c("gene", "cluster") else c("gene", "cluster", "split")) {
+            n_plot <- n_plot + 1
+            session$setInputs(
+              `umap-umap_selection` = choice, `umap-viz_type` = viz,
+              `umap-gene_selection` = pick$gene, `umap-split_by_group` = TRUE,
+              `umap-shown_splits` = shown, `umap-show_legend` = FALSE,
+              `umap-facet_ncol` = 1, `umap-plot_umap` = n_plot
+            )
+            render_ok(output$`umap-umap_plot`)
+            if (per_split && viz == "cluster") {
+              p <- umap_plot(ds_obj, resolve_reduction(ds_obj, choice)[shown],
+                             color_by = "cluster", splits = shown, ncol = 1)
+              expect_setequal(as.character(unique(p$data$split)), shown)
+              expect_equal(p$facet$params$ncol, 1)
+            }
+          }
         }
         download_ok(session, "umap-dl_umap", "png")
       }

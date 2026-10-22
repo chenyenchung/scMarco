@@ -32,6 +32,8 @@
 #             assay (e.g. pass RNA when the default is "integrated").
 #   --reduction  reduction to store instead of "umap" (e.g. tsne); stored as
 #             obsm X_<reduction>_full, or X_<split>_<reduction> per split.
+#             An object without it is an error that lists its reductions;
+#             --reduction none builds without one (the UMAP tab stays hidden).
 #   --exclude-clusters  comma-separated cluster IDs whose cells are dropped
 #             (e.g. 0 for cells discarded by the study).
 #   --prob    optional; as for script/add_probability_h5ad.R.
@@ -123,7 +125,10 @@ for (k in seq_along(inputs)) {
     labels <- lapply(labels, `[`, keep)
   }
   barcodes <- Cells(obj)[keep]
-  red <- if (red_name %in% Reductions(obj)) Embeddings(obj, red_name)[barcodes, 1:2, drop = FALSE]
+  red <- if (red_name != "none") {
+    seurat_reduction(obj, red_name, barcodes,
+                     if (per_split) paste0(names(inputs)[k], ": ") else "")
+  }
   parts[[k]] <- list(
     x = lognorm_by_cell(get_counts(obj, args$assay)[, barcodes, drop = FALSE]),
     barcodes = barcodes, split = labels$split, cluster = labels$cluster, umap = red
@@ -147,13 +152,12 @@ reductions <- list()
 for (k in seq_along(parts)) {
   if (is.null(parts[[k]]$umap)) next
   if (!per_split) {
-    reductions[[paste0(red_name, "_full")]] <- parts[[k]]$umap
+    reductions[[reduction_key(red_name)]] <- parts[[k]]$umap
     next
   }
   m <- matrix(NaN, length(barcodes), 2)
   m[sum(n_part[seq_len(k - 1)]) + seq_len(n_part[k]), ] <- parts[[k]]$umap
-  key <- if (red_name == "umap") names(inputs)[k] else paste0(names(inputs)[k], "_", red_name)
-  reductions[[key]] <- m
+  reductions[[reduction_key(red_name, names(inputs)[k])]] <- m
 }
 
 x <- do.call(cbind, lapply(parts, function(p) expand_genes(p$x, genes)))

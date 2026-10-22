@@ -262,17 +262,87 @@ reduction_label <- function(key) {
   ifelse(grepl("^(umap|tsne)_full$", name), "All cells", name)
 }
 
+split_reductions <- function(keys, splits) {
+  #' Reductions computed separately per split, stored as X_<split> (umap) or
+  #' X_<split>_<reduction> (seurat_to_h5ad.R with one object per split).
+  #' Returns list(<reduction> = c(<split> = key, ...)) with splits in order.
+  groups <- list()
+  for (s in splits[order(-nchar(splits))]) {
+    stem <- paste0("X_", s)
+    hit <- keys == stem | startsWith(keys, paste0(stem, "_"))
+    for (key in keys[hit]) {
+      red <- if (key == stem) "umap" else substring(key, nchar(stem) + 2)
+      groups[[red]][[s]] <- key
+    }
+    # The longest split name wins, e.g. X_A_B_tsne is split "A_B", not "A"
+    keys <- keys[!hit]
+  }
+  lapply(groups, function(g) unlist(g[intersect(splits, names(g))]))
+}
+
+reduction_choices <- function(ds) {
+  #' Selector entries: shared reductions by obsm key, per-split groups as
+  #' "split:<reduction>". Per-split keys are folded into their group.
+  groups <- split_reductions(ds$reductions, ds$splits)
+  shared <- setdiff(ds$reductions, unlist(groups))
+  names(shared) <- reduction_label(shared)
+  if (length(groups) == 0) return(shared)
+  per_split <- paste0("split:", names(groups))
+  names(per_split) <- paste0(
+    "Each ", ds$split_label, " separately",
+    if (length(groups) > 1) paste0(" (", names(groups), ")") else ""
+  )
+  c(shared, per_split)
+}
+
+resolve_reduction <- function(ds, choice) {
+  #' A selector value -> the obsm key, or c(<split> = key, ...) for a
+  #' per-split group
+  if (!startsWith(choice, "split:")) return(choice)
+  split_reductions(ds$reductions, ds$splits)[[sub("^split:", "", choice)]]
+}
+
 reduction_axis <- function(key) {
   #' Axis title stem: reductions named *tsne* (seurat_to_h5ad.R --reduction tsne) are tSNE
   if (grepl("tsne", key, ignore.case = TRUE)) "tSNE" else "UMAP"
 }
 
+square_extents <- function(df, by_split = TRUE) {
+  #' Two corner points that stretch the shorter axis to match the longer, per
+  #' split or (by_split = FALSE) over all cells for facets sharing their scales
+  corners <- function(d) {
+    half <- max(diff(range(d$dim1)), diff(range(d$dim2))) / 2
+    mid1 <- mean(range(d$dim1))
+    mid2 <- mean(range(d$dim2))
+    data.frame(dim1 = mid1 + c(-half, half), dim2 = mid2 + c(-half, half))
+  }
+  if (!by_split) return(corners(df))
+  do.call(rbind, lapply(split(df, df$split, drop = TRUE), function(d) {
+    cbind(corners(d), split = d$split[1])
+  }))
+}
+
 umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
                       gene = NULL, splits = ds$splits, facet = FALSE,
-                      show_legend = FALSE) {
+                      show_legend = FALSE, ncol = NULL) {
+  #' key: one obsm key shared by all splits, or c(<split> = key, ...) when each
+  #' split has its own reduction; then every split gets its own facet
+  #' ncol: facets per row (NULL lets facet_wrap decide)
   color_by <- match.arg(color_by)
   obs <- ds_cells_obs(ds)
-  coords <- ds_reduction(ds, key)
+  per_split <- !is.null(names(key))
+  if (per_split) {
+    key <- key[intersect(names(key), splits)]
+    splits <- names(key)
+    facet <- TRUE
+    coords <- matrix(NA_real_, nrow(obs), 2)
+    for (s in splits) {
+      in_split <- as.character(obs$split) == s
+      coords[in_split, ] <- ds_reduction(ds, key[[s]])[in_split, 1:2]
+    }
+  } else {
+    coords <- ds_reduction(ds, key)
+  }
   df <- data.frame(
     dim1 = coords[, 1], dim2 = coords[, 2],
     cluster = cluster_label(ds, obs$cluster),
@@ -287,10 +357,19 @@ umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
     return(message_plot("No cells in this reduction for the selected splits."))
   }
   split_label <- tools::toTitleCase(ds$split_label)
-  title <- reduction_label(key)
+  title <- if (per_split) {
+    paste(reduction_axis(key[[1]]), "of each", ds$split_label)
+  } else {
+    reduction_label(key)
+  }
+  # Embedding coordinates carry no meaning, so drop tick labels, ticks and grid
   base <- theme_minimal() +
     theme(text = element_text(size = 18),
-          strip.text = element_text(size = 16, face = "bold"))
+          strip.text = element_text(size = 16, face = "bold"),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid = element_blank(),
+          aspect.ratio = 1)
 
   p <- if (color_by == "gene") {
     df <- df[order(df$expression), ]
@@ -319,12 +398,21 @@ umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
       ) + scale_color_discrete(guide = "none")
     }
   }
-  if (facet) p <- p + facet_wrap(~split)
-  axis <- reduction_axis(key)
+  # Separate reductions share no coordinates, so each facet gets its own axes
+  if (facet) {
+    p <- p + facet_wrap(~split, ncol = ncol, scales = if (per_split) "free" else "fixed")
+  }
+  # Square panels (legend aside) with 1 unit on dim1 == 1 unit on dim2: pad each
+  # panel's data range to a square; base sets the panel aspect ratio to 1.
+  # coord_fixed() alone would size panels by the data range instead
+  p <- p + geom_blank(data = square_extents(df, by_split = per_split),
+                      aes(dim1, dim2), inherit.aes = FALSE)
+  axis <- reduction_axis(key[[1]])
   p + labs(title = title, x = paste(axis, 1), y = paste(axis, 2)) + base
 }
 
-umap_size <- function(n_splits, facet) {
+umap_size <- function(n_splits, facet, ncol = 2) {
   if (!facet) return(c(width = 1000, height = 800))
-  c(width = min(n_splits, 2) * 700 + 100, height = ceiling(n_splits / 2) * 600 + 100)
+  ncol <- min(n_splits, ncol)
+  c(width = ncol * 700 + 100, height = ceiling(n_splits / ncol) * 600 + 100)
 }
