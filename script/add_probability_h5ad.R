@@ -7,10 +7,14 @@
 #   Rscript script/add_probability_h5ad.R --clusters data/x.clusters.h5ad \
 #     --prob Male=male_prob.rds,Female=female_prob.rds
 #
-#   # one .rds holding list(Male = male_df, Female = female_df), or the legacy
-#   # wide table with "<split>@<cluster>" columns
+#   # one .rds holding list(Male = male_df, Female = female_df), or a wide
+#   # table with "<split>@<cluster>" columns (splits modeled together)
 #   Rscript script/add_probability_h5ad.R --clusters data/x.clusters.h5ad \
 #     --prob prob.rds
+#
+#   # items mix freely: here Mel and Yak were modeled together, San alone
+#   Rscript script/add_probability_h5ad.R --clusters data/x.clusters.h5ad \
+#     --prob mel_yak_wide.rds,San=san_prob.rds
 #
 # Each table is the mixture model's output for one split: genes as row names,
 # one column per cluster ID, plus QC columns; exprType marks the genes that
@@ -37,7 +41,10 @@ p <- assemble_prob(tables, as.character(ch$obs$split), as.character(ch$obs$clust
                    splits, ch$genes)
 add_probability_layer(args$clusters, p$prob, p$bimodal_by_split, list(
   method = "mixture model", source = args$prob, date = format(Sys.Date())
-))
+), mixture = p$mixture, mixture_models = p$mixture_models)
+groups <- split(names(p$mixture_models), p$mixture_models)
+message("Mixture models: ", paste(vapply(groups, paste, "", collapse = " + "),
+                                  collapse = "; "))
 n_bim <- colSums(p$bimodal_by_split)
 message("Wrote probabilities to ", args$clusters, "; bimodal genes per split: ",
         paste(sprintf("%s %d", names(n_bim), n_bim), collapse = ", "))

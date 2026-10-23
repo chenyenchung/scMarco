@@ -416,3 +416,137 @@ umap_size <- function(n_splits, facet, ncol = 2) {
   ncol <- min(n_splits, ncol)
   c(width = ncol * 700 + 100, height = ceiling(n_splits / ncol) * 600 + 100)
 }
+
+# ---------------------------------------------------------------------------
+# Mixture model: cluster averages and P(On)
+# ---------------------------------------------------------------------------
+
+MIXTURE_COLORS <- c("OFF" = "#2a78d6", "ON" = "#eb6834")
+
+# The pipeline rounds parameters to 2 decimals, so a stored 0 means < 0.005
+MIXTURE_FLOOR <- 0.005
+
+mixture_p_on <- function(x, fit) {
+  #' P(On | x) for two Gaussians with a shared SD: a logistic curve in x
+  sd <- max(fit$sd, MIXTURE_FLOOR)
+  pi_on <- min(max(fit$pi, MIXTURE_FLOOR), 1 - MIXTURE_FLOOR)
+  slope <- (fit$on_level - fit$off_level) / sd^2
+  plogis(qlogis(pi_on) + slope * (x - (fit$on_level + fit$off_level) / 2))
+}
+
+mixture_plot <- function(ds, gene, model, highlight = character(0), cut_off = 0.5) {
+  #' model: a mixture model of the dataset (see mixture_model_choices()); when
+  #' it was fit across several splits, their split x cluster averages are pooled
+  fit <- ds_mixture_fit(ds, gene, model)
+  if (is.null(fit)) return(message_plot("This dataset has no mixture-model fit."))
+  splits <- mixture_model_splits(ds, model)
+  where <- paste(splits, collapse = " + ")
+  joint <- length(splits) > 1
+  if (anyNA(unlist(fit[c("on_level", "off_level", "sd", "pi")]))) {
+    return(message_plot(paste0(gene, " was not modeled in ", where, ".")))
+  }
+  avg <- ds_cluster_average(ds, gene, splits)
+  if (is.null(avg)) return(message_plot("No cluster averages for this dataset."))
+  scale_note <- attr(avg, "scale")
+  avg <- avg[!is.na(avg$value), , drop = FALSE]
+  sd <- max(fit$sd, MIXTURE_FLOOR)
+  floored <- fit$sd < MIXTURE_FLOOR || fit$pi < MIXTURE_FLOOR ||
+    fit$pi > 1 - MIXTURE_FLOOR
+
+  centers <- c(fit$off_level, fit$on_level)
+  lims <- range(c(avg$value, centers - 3 * sd, centers + 3 * sd, 0))
+  grid <- seq(lims[1], lims[2], length.out = 500)
+  binwidth <- diff(lims) / 40
+
+  # Fitted components, scaled to the histogram's counts
+  n <- nrow(avg)
+  comp <- rbind(
+    data.frame(x = grid, component = "OFF",
+               y = n * binwidth * (1 - fit$pi) * dnorm(grid, fit$off_level, sd)),
+    data.frame(x = grid, component = "ON",
+               y = n * binwidth * fit$pi * dnorm(grid, fit$on_level, sd))
+  )
+  comp$component <- factor(comp$component, levels = names(MIXTURE_COLORS))
+
+  # One arrow per split x cluster pair of a cluster of interest
+  pts <- avg[avg$cluster %in% highlight, , drop = FALSE]
+  pts <- pts[order(match(pts$cluster, highlight), match(pts$split, splits)), , drop = FALSE]
+  names(pts)[names(pts) == "value"] <- "x"
+  pts$y <- mixture_p_on(pts$x, fit)
+  pts$label <- sprintf("%s%s\nP(On) = %.2f", cluster_label(ds, pts$cluster),
+                       if (joint) paste0(", ", pts$split) else "", pts$y)
+  absent <- setdiff(as.character(highlight), avg$cluster)
+  avg <- data.frame(x = avg$value)
+
+  # Shared x range; zooming (not limits) keeps histogram bins at the edges
+  x_scale <- coord_cartesian(xlim = lims, expand = TRUE)
+  base <- cowplot::theme_cowplot()
+
+  top <- ggplot(avg, aes(x = x)) +
+    geom_histogram(binwidth = binwidth, boundary = 0, fill = "#B5B5B5",
+                   color = "white", linewidth = 0.3) +
+    geom_line(data = comp, aes(x = x, y = y, color = component), linewidth = 1) +
+    scale_color_manual(values = MIXTURE_COLORS, name = "Fitted component") +
+    x_scale +
+    labs(x = NULL, y = "Number of clusters",
+         title = paste0(gene, " in ", where),
+         subtitle = paste0(
+           if (joint) sprintf("Modeled together; each %s's clusters counted separately\n",
+                              ds$split_label),
+           sprintf(
+             "%s; OFF mean %.2f, ON mean %.2f, shared SD %.2f, ON weight %.2f",
+             if (fit$bimodal) "Bimodal" else "Not bimodal (never ON here)",
+             fit$off_level, fit$on_level, fit$sd, fit$pi
+           )
+         )) +
+    base +
+    theme(legend.position = "top", legend.justification = "left")
+  if (nrow(pts) > 0) {
+    top <- top + geom_vline(xintercept = pts$x, linetype = "dashed",
+                            color = "#1B1B1B", linewidth = 0.4)
+  }
+
+  curve <- data.frame(x = grid, y = mixture_p_on(grid, fit))
+  bottom <- ggplot(curve, aes(x = x, y = y)) +
+    geom_hline(yintercept = cut_off, linetype = "dotted", color = "#7A7A7A") +
+    geom_line(linewidth = 1, color = "#1B1B1B") +
+    geom_rug(data = avg, aes(x = x), inherit.aes = FALSE,
+             sides = "b", alpha = 0.4, color = "#555555") +
+    coord_cartesian(xlim = lims, ylim = c(0, 1)) +
+    scale_y_continuous(breaks = seq(0, 1, 0.25)) +
+    labs(x = "Log-normalized expression (cluster average)", y = "P(On)") +
+    base
+  if (nrow(pts) > 0) {
+    bottom <- bottom +
+      geom_point(data = pts, aes(x = x, y = y), size = 3.5, color = "#1B1B1B",
+                 fill = "white", shape = 21, stroke = 1.5) +
+      ggrepel::geom_label_repel(
+        data = pts, aes(x = x, y = y, label = label),
+        nudge_y = ifelse(pts$y > 0.5, -0.3, 0.3), direction = "both",
+        min.segment.length = 0, box.padding = 0.6, size = 4.5,
+        arrow = arrow(length = unit(0.25, "cm"), type = "closed"),
+        max.overlaps = Inf, seed = 1
+      )
+  }
+
+  notes <- c(
+    if (identical(scale_note, "log of mean")) {
+      "Cluster average: log1p of the mean expression in linear space, the scale the model was fit on."
+    } else {
+      "Cluster average: mean of log-normalized values (no cell-level file); the model was fit on log of the mean, so clusters may sit off the curve."
+    },
+    sprintf("Dotted line: the probability threshold (%.2f).", cut_off),
+    if (floored) sprintf("Parameters are stored to 2 decimals; values below %.3f were drawn as %.3f.",
+                         MIXTURE_FLOOR, MIXTURE_FLOOR),
+    if (length(absent) > 0) {
+      lbl <- cluster_label(ds, absent)
+      paste0("Not in ", where, ": ",
+             paste(ifelse(is.na(lbl), absent, lbl), collapse = ", "), ".")
+    }
+  )
+  bottom <- bottom + labs(caption = paste(notes, collapse = "\n")) +
+    theme(plot.caption = element_text(hjust = 0, size = 11, color = "#555555"))
+
+  cowplot::plot_grid(top, bottom, ncol = 1, align = "v", axis = "lr",
+                     rel_heights = c(1, 1.15))
+}

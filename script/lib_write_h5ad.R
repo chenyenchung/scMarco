@@ -61,13 +61,19 @@ write_clusters_h5ad <- function(path, obs_split, obs_cluster, splits, clusters,
   invisible(path)
 }
 
-add_probability_layer <- function(path, prob, bimodal_by_split, binarization) {
+add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
+                                  mixture = NULL, mixture_models = NULL) {
   #' Binarize a clusters file in place: write layers/prob, var/is_bimodal,
-  #' varm/bimodal_by_split and uns/scmarco/binarization. Replaces any earlier
-  #' probabilities; obs, the other layers and uns are kept.
+  #' varm/bimodal_by_split, varm/mixture_* and uns/scmarco/binarization.
+  #' Replaces any earlier probabilities; obs, the other layers and uns are kept.
   #' prob: n_obs x n_genes matrix in obs order
   #' bimodal_by_split: n_genes x n_splits logical matrix, columns named by split
   #' binarization: list(method, source, date)
+  #' mixture: optional named list of n_genes x n_splits fit parameters
+  #'   (on_level, off_level, sd, pi), columns named by split
+  #' mixture_models: split -> the model it was fit in; splits sharing a model
+  #'   were fit together. Stored in uns/scmarco/mixture_models (in
+  #'   bimodal_splits order) alongside the parameters
   ad <- read_h5ad(path, as = "InMemoryAnnData")
   splits <- levels(ad$obs$split)
   genes <- rownames(ad$var)
@@ -88,11 +94,23 @@ add_probability_layer <- function(path, prob, bimodal_by_split, binarization) {
   storage.mode(bim) <- "integer"
   varm <- if (is.null(ad$varm)) list() else ad$varm
   varm$bimodal_by_split <- unname(bim)
+  # drop parameters of an earlier run so they never outlive their probabilities
+  varm <- varm[!startsWith(names(varm), "mixture_")]
+  for (k in names(mixture)) {
+    m <- mixture[[k]][genes, splits, drop = FALSE]
+    storage.mode(m) <- "double"
+    varm[[paste0("mixture_", k)]] <- unname(m)
+  }
   ad$varm <- varm
 
   uns <- ad$uns
   uns$scmarco$bimodal_splits <- splits
   uns$scmarco$binarization <- binarization
+  uns$scmarco$mixture_models <- NULL
+  if (!is.null(mixture)) {
+    if (is.null(mixture_models)) mixture_models <- setNames(splits, splits)
+    uns$scmarco$mixture_models <- unname(as.character(mixture_models[splits]))
+  }
   ad$uns <- uns
 
   tmp <- paste0(path, ".binarize")

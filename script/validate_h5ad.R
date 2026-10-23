@@ -107,6 +107,16 @@ if ("bimodal_by_split" %in% ch$varm) {
     err("uns bimodal_splits does not match the obs split categories")
   }
 }
+for (key in grep("^mixture_", ch$varm, value = TRUE)) {
+  m <- h5ad_varm(ch, key)
+  if (nrow(m) != length(ch$genes) || ncol(m) != length(meta$bimodal_splits)) {
+    err("varm/", key, " shape does not match genes x uns bimodal_splits")
+  }
+}
+if (!is.null(meta$mixture_models) &&
+    length(meta$mixture_models) != length(meta$bimodal_splits)) {
+  err("uns mixture_models does not match uns bimodal_splits")
+}
 if (binarized && !"is_bimodal" %in% names(ch$var)) {
   warn("var/is_bimodal is missing: every gene will be used for marker finding")
 }

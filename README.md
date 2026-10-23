@@ -59,6 +59,7 @@ that exists.
 | `obs` | index `"<split>\|<cluster>"`; `split` (categorical, ordered when splits are ordered), `cluster` (categorical cluster ID), optional `cluster_name` (categorical; missing = unnamed), optional `n_cells` |
 | `var` | index = genes (sorted); optional `is_bimodal` (bool): genes used for marker finding |
 | `varm/bimodal_by_split` | optional genes × splits 0/1, column order in `uns/scmarco/bimodal_splits` |
+| `varm/mixture_on_level`, `mixture_off_level`, `mixture_sd`, `mixture_pi` | optional genes × splits mixture-model fit (ON and OFF component means, shared SD, ON weight), same column order; enables the Mixture model tab |
 | `layers/prob` | mixture-model probability of expression (NaN = not modeled / non-bimodal) |
 | `layers/pct_pos` | optional fraction of cells with > 0 UMIs |
 | `layers/mean_lognorm` | optional cluster-average log-normalized expression (trend plot) |

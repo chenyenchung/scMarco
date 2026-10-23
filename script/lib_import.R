@@ -6,6 +6,11 @@
 QC_COLS <- c("diff.elpd", "diff.elpd.se", "bimodal.on_level", "bimodal.off_level",
              "bimodal.sd", "bimodal.pi", "unimodal.level", "unimodal.sd", "exprType")
 
+# Mixture-model fit parameters kept per gene x split (varm/mixture_<name>):
+# the two Gaussian component means, their shared SD and the ON weight
+MIXTURE_COLS <- c(on_level = "bimodal.on_level", off_level = "bimodal.off_level",
+                  sd = "bimodal.sd", pi = "bimodal.pi")
+
 fail <- function(...) stop(paste0(...), call. = FALSE)
 
 first_few <- function(x, n = 5) {
@@ -156,38 +161,54 @@ check_labels <- function(split, cluster) {
 # ---------------------------------------------------------------------------
 
 read_prob_arg <- function(arg) {
-  #' --prob value -> named list split -> table (genes x clusters + QC columns).
-  #' "Male=a.rds,Female=b.rds": one file per split. "x.rds": a named list of
-  #' tables, or the legacy wide data.frame with "<split>@<cluster>" columns.
-  if (grepl("=", arg, fixed = TRUE)) {
-    pairs <- strsplit(strsplit(arg, ",", fixed = TRUE)[[1]], "=", fixed = TRUE)
-    if (any(lengths(pairs) != 2)) {
-      fail("--prob must look like Split1=file1.rds,Split2=file2.rds; got ", arg)
+  #' --prob value -> named list split -> table (genes x clusters + QC columns),
+  #' with attr "models": split -> the mixture model it was fit in.
+  #' A comma-separated list of items, each one of
+  #'   "Male=a.rds": one split's table, modeled on its own;
+  #'   "x.rds" holding a named list of tables: one model per split;
+  #'   "x.rds" holding a wide table with "<split>@<cluster>" columns: the
+  #'     splits in it were modeled together, as one model.
+  items <- strsplit(arg, ",", fixed = TRUE)[[1]]
+  pairs <- strsplit(items, "=", fixed = TRUE)
+  if (any(lengths(pairs) > 2) || any(!nzchar(unlist(pairs)))) {
+    fail("--prob items must look like Split=file.rds or file.rds; got ", arg)
+  }
+  files <- vapply(pairs, function(p) p[length(p)], "")
+  missing <- files[!file.exists(files)]
+  if (length(missing) > 0) fail("Probability file(s) not found: ", first_few(missing))
+
+  tables <- list()
+  models <- character(0)
+  for (i in seq_along(pairs)) {
+    obj <- readRDS(files[i])
+    if (length(pairs[[i]]) == 2) {
+      add <- setNames(list(obj), pairs[[i]][1])
+      model <- names(add)
+    } else if (is.data.frame(obj) || is.matrix(obj)) {
+      message("Reading ", files[i], " as a wide table with '<split>@<cluster>' ",
+              "columns: its splits were modeled together")
+      add <- legacy_wide_to_split_tables(obj)
+      model <- rep(paste(names(add), collapse = "+"), length(add))
+    } else if (is.list(obj) && !is.null(names(obj)) && all(names(obj) != "")) {
+      add <- obj
+      model <- names(add)
+    } else {
+      fail(files[i], " must hold a named list of per-split tables, e.g. ",
+           "list(Male = male_df, Female = female_df), or a wide table with ",
+           "'<split>@<cluster>' columns")
     }
-    splits <- vapply(pairs, `[`, "", 1)
-    files <- vapply(pairs, `[`, "", 2)
-    missing <- files[!file.exists(files)]
-    if (length(missing) > 0) fail("Probability file(s) not found: ", first_few(missing))
-    tables <- lapply(files, readRDS)
-    names(tables) <- splits
-    return(tables)
+    tables <- c(tables, add)
+    models <- c(models, setNames(model, names(add)))
   }
-  if (!file.exists(arg)) fail("Probability file not found: ", arg)
-  obj <- readRDS(arg)
-  if (is.data.frame(obj)) {
-    message("Reading a legacy wide table with '<split>@<cluster>' columns")
-    return(legacy_wide_to_split_tables(obj))
-  }
-  if (!is.list(obj) || is.null(names(obj)) || any(names(obj) == "")) {
-    fail(arg, " must hold a named list of per-split tables, e.g. ",
-         "list(Male = male_df, Female = female_df), or a legacy wide data.frame")
-  }
-  obj
+  attr(tables, "models") <- models
+  tables
 }
 
 legacy_wide_to_split_tables <- function(df) {
-  #' Legacy wide table -> per-split tables. Its single exprType (and QC
-  #' columns) apply to every split.
+  #' Wide table (one model fit across splits) -> per-split tables. Its single
+  #' exprType (and QC columns) apply to every split.
+  text_matrix <- is.matrix(df) && is.character(df)
+  df <- as.data.frame(df, check.names = FALSE, stringsAsFactors = FALSE)
   qc <- intersect(colnames(df), QC_COLS)
   prob_cols <- colnames(df)[!colnames(df) %in% QC_COLS]
   parts <- strsplit(prob_cols, "@", fixed = TRUE)
@@ -201,15 +222,21 @@ legacy_wide_to_split_tables <- function(df) {
   tables <- lapply(unique(col_split), function(s) {
     out <- df[, c(prob_cols[col_split == s], qc), drop = FALSE]
     colnames(out) <- c(col_cluster[col_split == s], qc)
-    out
+    # keep the raw model output's form, so numbers stored as text are parsed
+    if (text_matrix) as.matrix(out) else out
   })
   names(tables) <- unique(col_split)
   tables
 }
 
-assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes) {
-  #' Per-split tables -> the prob layer (n_obs x n_genes, in obs order) and
-  #' bimodal_by_split (n_genes x n_splits). Applies the rules in
+assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes,
+                          models = attr(tables, "models")) {
+  #' Per-split tables -> the prob layer (n_obs x n_genes, in obs order),
+  #' bimodal_by_split (n_genes x n_splits), mixture, a named list of
+  #' n_genes x n_splits fit parameters (MIXTURE_COLS; NULL when a table lacks
+  #' them, NA for genes missing from a split's table), and mixture_models,
+  #' split -> the model it was fit in (from `models`; each split its own model
+  #' by default). Applies the rules in
   #' docs/expected_input.md: stops on errors, warns on gaps.
   given <- names(tables)
   if (anyDuplicated(given)) fail("Split(s) given twice: ", first_few(given[duplicated(given)]))
@@ -226,6 +253,10 @@ assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes) {
 
   prob <- matrix(NA_real_, length(obs_split), length(genes))
   bimodal <- matrix(FALSE, length(genes), length(splits), dimnames = list(genes, splits))
+  mixture <- lapply(MIXTURE_COLS, function(col) {
+    matrix(NA_real_, length(genes), length(splits), dimnames = list(genes, splits))
+  })
+  has_mixture <- TRUE
   for (s in splits) {
     tab <- tables[[s]]
     where <- paste0("split '", s, "': ")
@@ -298,10 +329,26 @@ assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes) {
     gi <- match(tab_genes, genes)
     is_bim <- tab$exprType %in% "bimodal"
     bimodal[gi, s] <- is_bim
+    if (all(MIXTURE_COLS %in% colnames(tab))) {
+      for (k in names(MIXTURE_COLS)) {
+        mixture[[k]][gi, s] <- suppressWarnings(as.numeric(tab[[MIXTURE_COLS[[k]]]]))
+      }
+    } else {
+      has_mixture <- FALSE
+    }
     values[!is_bim, ] <- NA
     for (j in seq_along(cl_cols)) {
       prob[rows_s[match(target[j], present)], gi] <- values[, j]
     }
   }
-  list(prob = prob, bimodal_by_split = bimodal)
+  if (!has_mixture) {
+    warning("Not every table has the columns ", paste(MIXTURE_COLS, collapse = ", "),
+            "; the mixture-model plot will be unavailable", call. = FALSE)
+    mixture <- NULL
+  }
+  mixture_models <- setNames(splits, splits)
+  known <- intersect(names(models), splits)
+  mixture_models[known] <- models[known]
+  list(prob = prob, bimodal_by_split = bimodal, mixture = mixture,
+       mixture_models = mixture_models)
 }

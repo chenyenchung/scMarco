@@ -241,7 +241,7 @@ if (!is.null(prob_tables)) {
   p <- assemble_prob(prob_tables, obs_split, obs_cluster, splits, genes)
   add_probability_layer(clusters_path, p$prob, p$bimodal_by_split, list(
     method = "mixture model", source = args$prob, date = format(Sys.Date())
-  ))
+  ), mixture = p$mixture, mixture_models = p$mixture_models)
   message(sprintf("Binarized %s: %d genes bimodal in at least one %s",
                   clusters_path, sum(rowSums(p$bimodal_by_split) > 0), args$`split-label`))
 } else {

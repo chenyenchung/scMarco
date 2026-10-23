@@ -27,6 +27,7 @@ source("src/module_find_distinct.R")
 source("src/module_coexp.R")
 source("src/module_lineplot.R")
 source("src/module_umap_viz.R")
+source("src/module_mixture.R")
 
 if (length(config$datasets) == 0) {
   stop("No datasets configured in ", config_path)
@@ -93,7 +94,8 @@ ui <- fluidPage(
         tabPanel("Find distinct genes within", find_distinct_UI("fd_genes")),
         tabPanel("Co-expression plot", coexp_UI("coexp")),
         tabPanel("Plot expression trend", lineplot_UI("lplot")),
-        tabPanel("UMAP", umap_viz_UI("umap"))
+        tabPanel("UMAP", umap_viz_UI("umap")),
+        tabPanel("Mixture model", mixture_UI("mixture"))
       )
     ),
     mainPanel(
@@ -106,7 +108,8 @@ ui <- fluidPage(
         tabPanel(title = "On/Off", find_distinct_output("fd_genes")),
         tabPanel(title = "Co-Expression", coexp_output("coexp")),
         tabPanel(title = "Expression Trend", lineplot_output("lplot")),
-        tabPanel(title = "UMAP", umap_viz_output("umap"))
+        tabPanel(title = "UMAP", umap_viz_output("umap")),
+        tabPanel(title = "Mixture Model", mixture_output("mixture"))
       )
     )
   )
@@ -146,11 +149,14 @@ server <- function(input, output, session) {
 
     has_trend <- ds()$has_mean && ds()$ordered_splits
     has_umap <- length(ds()$reductions) > 0
+    has_mixture <- ds()$has_mixture
     for (tab in list(
       list("controlTabs", "Plot expression trend", has_trend),
       list("outputTabs", "Expression Trend", has_trend),
       list("controlTabs", "UMAP", has_umap),
-      list("outputTabs", "UMAP", has_umap)
+      list("outputTabs", "UMAP", has_umap),
+      list("controlTabs", "Mixture model", has_mixture),
+      list("outputTabs", "Mixture Model", has_mixture)
     )) {
       if (tab[[3]]) showTab(tab[[1]], tab[[2]]) else hideTab(tab[[1]], tab[[2]])
     }
@@ -207,6 +213,7 @@ server <- function(input, output, session) {
   find_distinct_server("fd_genes", ctx, coexp_session)
   lineplot_server("lplot", ctx)
   umap_viz_server("umap", ctx)
+  mixture_server("mixture", ctx)
 }
 
 shinyApp(ui = ui, server = server)

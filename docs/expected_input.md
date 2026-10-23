@@ -181,9 +181,27 @@ The split names must match the build step. Per-split bimodality is stored in
 `varm/bimodal_by_split`. A gene counts as bimodal in `var/is_bimodal` when it
 is bimodal in at least one split.
 
+When every table has `bimodal.on_level`, `bimodal.off_level`, `bimodal.sd` and
+`bimodal.pi`, they are stored per gene × split in `varm/mixture_on_level`,
+`varm/mixture_off_level`, `varm/mixture_sd` and `varm/mixture_pi`. The app's
+Mixture model tab draws them: the distribution of cluster averages with the two
+fitted Gaussians, and the P(On) curve with the clusters of interest marked. If
+any table lacks them, a warning is given and the tab is hidden.
+
+The `--prob` input also tells which splits were **modeled together**, recorded
+in `uns/scmarco/mixture_models` (one model name per split, in `bimodal_splits`
+order). Each `Split=file.rds` item and each element of a named list is its own
+model; a wide table (2b) is one model across all its splits. Items can be mixed,
+e.g. `--prob mel_yak_wide.rds,San=san.rds` (Mel and Yak modeled together, San
+alone). For a joint model the Mixture model tab pools the clusters of all its
+splits, counting each split × cluster pair once. Datasets
+binarized before this was added get the tab once `add_probability_h5ad.R` is
+run again.
+
 ### 2b. Legacy wide RDS (accepted)
 
-This is the format `add_probability_to_h5.R` read:
+This is the format `add_probability_to_h5.R` read, and the output of one model
+fit across several splits (e.g. four species modeled together):
 
 - a `data.frame` with genes as row names;
 - one probability column per `"<split>@<cluster>"`, all splits in one table;
@@ -215,7 +233,7 @@ The output is described fully in the README ("Data format"). In short:
 
 | File | Contents |
 |---|---|
-| `<id>.clusters.h5ad` | obs = split × cluster pairs that exist (`split`, `cluster` ID, optional `cluster_name`, `n_cells`); layers `pct_pos`, `mean_lognorm` and, once binarized, `prob`; `var/is_bimodal` and `varm/bimodal_by_split` once binarized; `uns/scmarco` metadata |
+| `<id>.clusters.h5ad` | obs = split × cluster pairs that exist (`split`, `cluster` ID, optional `cluster_name`, `n_cells`); layers `pct_pos`, `mean_lognorm` and, once binarized, `prob`; `var/is_bimodal`, `varm/bimodal_by_split` and `varm/mixture_*` once binarized; `uns/scmarco` metadata |
 | `<id>.cells.h5ad` | X = log-normalized cells × genes (CSC); obs = `barcode`, `split`, `cluster`; `obsm/X_*` reductions |
 
 | State | Has `layers/prob` | `uns/scmarco/binarization` | Validator | App |

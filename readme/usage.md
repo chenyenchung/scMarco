@@ -18,7 +18,8 @@ the dataset expresses it.
 Binarization greatly reduces complexity, but expression is a spectrum and some
 clusters are hard to call ON or OFF. Where the dataset provides them, also check
 the log-normalized values: **Plot expression trend** for datasets with ordered
-stages, and **UMAP** for datasets with cell-level data.
+stages, and **UMAP** for datasets with cell-level data. **Mixture model** shows
+why a gene was called ON or OFF in a cluster.
 
 ### Shared options
 
@@ -94,3 +95,14 @@ highlighted, and get distinct colors in the downloaded static version.
 Plot any stored reduction colored by a gene's log-normalized expression, by
 cluster, or by stage, sex or species. Cells are limited to the checked items of
 **Must be ON in these …**; with none checked, every cell is shown.
+
+### Mixture model
+
+For one gene in one stage, sex or species, the top panel is a histogram of
+cluster averages (how many clusters express the gene at each level) with the
+two Gaussians the mixture model fit, and the subtitle says whether the gene was
+called bimodal. The bottom panel is the resulting P(On) curve, which rises from
+0 to 1 between the OFF and ON levels; arrows point to the clusters of interest
+on it, and the dotted line is the probability threshold. Shown only for
+datasets that store the model's fit parameters.
+

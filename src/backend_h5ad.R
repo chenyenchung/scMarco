@@ -261,6 +261,26 @@ ds_load <- function(id, entry) {
     bimodal <- h5ad_varm(ch, "bimodal_by_split") > 0
     dimnames(bimodal) <- list(ch$genes, as.character(meta$bimodal_splits))
   }
+  # Mixture-model fit per gene x split: component means, shared SD, ON weight
+  mixture <- NULL
+  mixture_keys <- paste0("mixture_", c("on_level", "off_level", "sd", "pi"))
+  if (all(mixture_keys %in% ch$varm)) {
+    mixture <- lapply(mixture_keys, function(key) {
+      m <- h5ad_varm(ch, key)
+      dimnames(m) <- list(ch$genes, as.character(meta$bimodal_splits))
+      m
+    })
+    names(mixture) <- sub("^mixture_", "", mixture_keys)
+  }
+  # split -> the model it was fit in; splits sharing one were fit together
+  mixture_models <- NULL
+  if (!is.null(mixture)) {
+    fit_splits <- as.character(meta$bimodal_splits)
+    models <- if (is.null(meta$mixture_models)) fit_splits else
+      as.character(meta$mixture_models)
+    mixture_models <- setNames(models, fit_splits)
+  }
+
   analysis_genes <- ch$genes
   if ("is_bimodal" %in% names(ch$var)) {
     analysis_genes <- ch$genes[ch$var$is_bimodal %in% TRUE]
@@ -285,12 +305,15 @@ ds_load <- function(id, entry) {
     obs_cluster = as.character(ch$obs$cluster),
     prob = h5ad_layer(ch, "prob"),
     bimodal = bimodal,
+    mixture = mixture,
+    mixture_models = mixture_models,
     all_genes = ch$genes,
     analysis_genes = analysis_genes,
     split_label = pick(entry$split_label, pick(meta$split_label, "split")),
     ordered_splits = isTRUE(pick(entry$ordered_splits, meta$ordered_splits)),
     has_pct = "pct_pos" %in% ch$layers,
     has_mean = "mean_lognorm" %in% ch$layers,
+    has_mixture = !is.null(mixture),
     reductions = if (is.null(cells)) character(0) else cells$obsm,
     binarized = new.env(parent = emptyenv())
   )
@@ -357,4 +380,54 @@ ds_reduction <- function(ds, key) {
   coords <- h5ad_obsm(ds$cells_h, key)
   colnames(coords) <- paste0("dim", seq_len(ncol(coords)))
   coords
+}
+
+mixture_model_splits <- function(ds, model) {
+  #' Splits fit in one mixture model, in dataset order
+  intersect(ds$splits, names(ds$mixture_models)[ds$mixture_models == model])
+}
+
+mixture_model_choices <- function(ds) {
+  #' Choices for Shiny inputs: "Mel + Yak" shown, the model name returned
+  if (is.null(ds$mixture_models)) return(character(0))
+  models <- unique(ds$mixture_models[intersect(ds$splits, names(ds$mixture_models))])
+  labels <- vapply(models, function(m) {
+    paste(mixture_model_splits(ds, m), collapse = " + ")
+  }, "")
+  setNames(models, labels)
+}
+
+ds_mixture_fit <- function(ds, gene, model) {
+  #' Mixture-model fit of one gene in one model: list(on_level, off_level, sd,
+  #' pi, bimodal), or NULL when the dataset has no fit parameters. Splits fit
+  #' together share their parameters; bimodal is TRUE if it is in any of them.
+  if (is.null(ds$mixture)) return(NULL)
+  splits <- mixture_model_splits(ds, model)
+  fit <- lapply(ds$mixture, function(m) m[gene, splits[1]])
+  fit$bimodal <- any(ds$bimodal[gene, splits] %in% TRUE)
+  fit
+}
+
+ds_cluster_average <- function(ds, gene, splits) {
+  #' data.frame(split, cluster, value): average expression of a gene in each
+  #' split x cluster pair of the given splits. With a cell-level file this is
+  #' log1p(mean(expm1(x))), the scale the mixture model was fit on (averaging
+  #' in linear space, as Seurat's AverageExpression); otherwise the mean of
+  #' log-normalized values. attr(, "scale") says which.
+  if (!is.null(ds$cells_h)) {
+    obs <- ds$cells_h$obs
+    sel <- as.character(obs$split) %in% splits
+    x <- ds_cell_expression(ds, gene)[sel]
+    key <- data.frame(split = as.character(obs$split[sel]),
+                      cluster = as.character(obs$cluster[sel]))
+    out <- aggregate(list(value = expm1(x)), key, mean)
+    out$value <- log1p(out$value)
+    attr(out, "scale") <- "log of mean"
+    return(out)
+  }
+  if (!ds$has_mean) return(NULL)
+  long <- ds_cluster_layer_long(ds, "mean_lognorm", gene)
+  out <- long[long$split %in% splits, c("split", "cluster", "value")]
+  attr(out, "scale") <- "mean of log"
+  out
 }

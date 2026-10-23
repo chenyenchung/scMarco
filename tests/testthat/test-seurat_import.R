@@ -264,6 +264,52 @@ test_that("legacy wide tables split into per-split tables", {
   expect_error(legacy_wide_to_split_tables(wide), "'<split>@<cluster>'.*oops")
 })
 
+test_that("assemble_prob keeps mixture parameters and modeling units", {
+  obs_split <- c("Male", "Male", "Male", "Female")
+  obs_cluster <- c("1", "2", "10", "1")
+  m <- male_prob(); m$bimodal.on_level <- 2; m$bimodal.sd <- 0.3
+  p <- assemble_prob(list(Male = m, Female = female_prob()),
+                     obs_split, obs_cluster, c("Male", "Female"), GENES)
+  expect_equal(names(p$mixture), c("on_level", "off_level", "sd", "pi"))
+  expect_equal(p$mixture$on_level["geneA", ], c(Male = 2, Female = 0))
+  expect_equal(p$mixture$sd["geneD", "Male"], 0.3)
+  expect_equal(p$mixture_models, c(Male = "Male", Female = "Female"))
+
+  p <- assemble_prob(list(Male = m, Female = female_prob()),
+                     obs_split, obs_cluster, c("Male", "Female"), GENES,
+                     models = c(Male = "Male+Female", Female = "Male+Female"))
+  expect_equal(unname(p$mixture_models), c("Male+Female", "Male+Female"))
+
+  bad <- m; bad$bimodal.pi <- NULL
+  expect_warning(p <- assemble_prob(list(Male = bad, Female = female_prob()),
+                                    obs_split, obs_cluster, c("Male", "Female"), GENES),
+                 "mixture-model plot will be unavailable")
+  expect_null(p$mixture)
+})
+
+test_that("read_prob_arg records which splits were modeled together", {
+  dir <- withr::local_tempdir()
+  wide <- data.frame(`M@1` = 1:2 / 4, `F@1` = 3:4 / 4, exprType = "bimodal",
+                     check.names = FALSE, row.names = c("g1", "g2"))
+  saveRDS(wide, file.path(dir, "wide.rds"))
+  saveRDS(as.matrix(wide), file.path(dir, "wide_text.rds"))
+  saveRDS(wide[, c("M@1", "exprType")], file.path(dir, "one.rds"))
+  saveRDS(list(A = wide, B = wide), file.path(dir, "list.rds"))
+  path <- function(f) file.path(dir, f)
+
+  t <- read_prob_arg(path("wide.rds"))
+  expect_equal(attr(t, "models"), c(M = "M+F", F = "M+F"))
+  t <- read_prob_arg(paste0(path("wide.rds"), ",X=", path("one.rds")))
+  expect_equal(names(t), c("M", "F", "X"))
+  expect_equal(attr(t, "models"), c(M = "M+F", F = "M+F", X = "X"))
+  t <- read_prob_arg(path("list.rds"))
+  expect_equal(attr(t, "models"), c(A = "A", B = "B"))
+  # the model's raw character output stays text, so assemble_prob parses it
+  t <- read_prob_arg(path("wide_text.rds"))
+  expect_true(is.matrix(t$F) && is.character(t$F))
+  expect_error(read_prob_arg("a=b=c.rds"), "must look like")
+})
+
 test_that("build from one object per split with different genes and assays", {
   skip_if_not_installed("SeuratObject")
   dir <- withr::local_tempdir()
