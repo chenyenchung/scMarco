@@ -324,15 +324,17 @@ ds_load <- function(id, entry) {
 }
 
 ds_binarize <- function(ds, margin) {
-  #' Binarized view of the dataset at a confidence margin (memoized, a few per
+  #' Binarized view of the dataset at a confidence margin (memoized, two per
   #' dataset)
   key <- format(margin, nsmall = 3)
   if (!is.null(ds$binarized[[key]])) {
     return(ds$binarized[[key]])
   }
-  cached <- ls(ds$binarized)
-  if (length(cached) >= 3) {
-    rm(list = cached[1], envir = ds$binarized)
+  # Evict the oldest; .order is hidden from ls() and keeps insertion order
+  order <- ds$binarized$.order
+  if (length(order) >= 2) {
+    rm(list = order[1], envir = ds$binarized)
+    order <- order[-1]
   }
   b <- binarize(
     ds$prob, ds$obs_split, ds$obs_cluster,
@@ -340,6 +342,7 @@ ds_binarize <- function(ds, margin) {
     margin = margin, bimodal = ds$bimodal
   )
   ds$binarized[[key]] <- b
+  ds$binarized$.order <- c(order, key)
   b
 }
 

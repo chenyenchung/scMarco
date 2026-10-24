@@ -46,13 +46,12 @@ gene_list_labels <- vapply(
   config$gene_list, function(x) x$label, character(1)
 )
 
-# Load every dataset once per process (shared across sessions)
+# Datasets load on first use and are then shared across sessions (ds_load
+# memoizes per process). Check them all now so a bad config still fails at
+# startup, and warm the default so the landing page is ready.
 ds_check_config(config$datasets)
-datasets <- lapply(names(config$datasets), function(id) {
-  message("Loading dataset ", id, "...")
-  ds_load(id, config$datasets[[id]])
-})
-names(datasets) <- names(config$datasets)
+message("Loading default dataset ", default_dataset, "...")
+invisible(ds_load(default_dataset, config$datasets[[default_dataset]]))
 
 # readme: one Markdown file or a list of them (e.g. lab intro + shared usage)
 readme_paths <- if (is.null(config$readme)) "readme/usage.md" else unlist(config$readme)
@@ -122,7 +121,7 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   ds <- reactive({
     shiny::req(input$dataset)
-    datasets[[input$dataset]]
+    ds_load(input$dataset, config$datasets[[input$dataset]])
   })
 
   gene_filter <- reactive({
@@ -147,7 +146,9 @@ server <- function(input, output, session) {
   # Dropdown choices for views that also show unimodal genes, labeled as such
   all_gene_choices <- reactive(gene_choices(ds(), all_genes()))
 
-  margin <- reactive(input$margin / 100)
+  # Debounced: each distinct margin is a full binarize, so don't run one per
+  # intermediate slider position
+  margin <- debounce(reactive(input$margin / 100), 500)
   b <- reactive(ds_binarize(ds(), margin()))
 
   observeEvent(ds(), {
