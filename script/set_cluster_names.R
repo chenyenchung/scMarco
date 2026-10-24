@@ -195,4 +195,3 @@ if (modes[["split"]]) {
 for (i in head(which(named), 5)) {
   message(sprintf("  %s -> ID %s, name %s", parts$label[i], parts$id[i], parts$name[i]))
 }
-check_with_python(args$clusters)

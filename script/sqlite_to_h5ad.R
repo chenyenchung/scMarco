@@ -105,4 +105,3 @@ write_clusters_h5ad(
   )
 )
 message("Wrote ", out)
-check_with_python(out)

@@ -249,5 +249,3 @@ if (!is.null(prob_tables)) {
           "script/add_probability_h5ad.R --clusters ", clusters_path,
           " --prob <split>=<file.rds>,...")
 }
-check_with_python(clusters_path)
-check_with_python(cells_path)

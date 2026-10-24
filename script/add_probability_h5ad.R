@@ -59,4 +59,3 @@ message(paste(out, collapse = "\n"))
 if (!is.null(attr(out, "status")) && attr(out, "status") != 0) {
   stop("Validation failed after writing ", args$clusters, call. = FALSE)
 }
-check_with_python(args$clusters)

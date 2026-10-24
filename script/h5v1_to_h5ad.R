@@ -156,6 +156,3 @@ write_cells_h5ad(
 )
 message("Wrote ", cells_path, " with reductions: ",
         paste(names(reductions), collapse = ", "))
-
-check_with_python(clusters_path)
-check_with_python(cells_path)

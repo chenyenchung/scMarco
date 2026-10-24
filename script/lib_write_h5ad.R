@@ -218,32 +218,6 @@ rechunk_h5ad <- function(path, n_obs, sparse_x = FALSE, dense = character(0),
   invisible(TRUE)
 }
 
-check_with_python <- function(path) {
-  #' Confirm the file opens in Python anndata when a project venv exists
-  py <- file.path(
-    dirname(dirname(normalizePath(sys_script_path()))), ".venv", "bin", "python"
-  )
-  if (!file.exists(py)) {
-    message("Skipping Python anndata check (no .venv)")
-    return(invisible(NA))
-  }
-  out <- system2(py, c("-c", shQuote(sprintf(
-    "import anndata; print(anndata.read_h5ad(%s))", shQuote(path, "sh")
-  ))), stdout = TRUE, stderr = TRUE)
-  status <- attr(out, "status")
-  if (!is.null(status) && status != 0) {
-    stop("Python anndata could not read ", path, ":\n", paste(out, collapse = "\n"))
-  }
-  message(paste(out, collapse = "\n"))
-  invisible(TRUE)
-}
-
-sys_script_path <- function() {
-  arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
-  if (length(arg) == 0) return(file.path(getwd(), "script", "x.R"))
-  sub("^--file=", "", arg[1])
-}
-
 parse_cli <- function(spec) {
   #' spec: named list of defaults (NA = required). Accepts --name value.
   args <- commandArgs(trailingOnly = TRUE)

@@ -13,9 +13,8 @@ appear only when a dataset has the data they need.
 ## Running
 
 ```sh
-# once: restore the R library (renv) and, optionally, Python for checks
+# once: restore the R library (renv)
 Rscript -e 'renv::restore()'
-uv venv .venv && uv pip install --python .venv/bin/python anndata h5py
 
 # run an instance
 SCMARCO_CONFIG=configs/optic_lobe.yaml Rscript -e 'shiny::runApp(".")'
