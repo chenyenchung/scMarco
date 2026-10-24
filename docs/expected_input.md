@@ -56,7 +56,7 @@ named.
 anything else, e.g. cells the study discarded but kept in the object.
 
 Name rules, checked with actionable errors (`check_labels()` in `script/lib_import.R`;
-`validate_h5ad.R` checks them again):
+`validate_h5ad()` in `script/lib_validate.R` checks them again):
 
 - no empty or missing value in either label;
 - no `|`, because the files use `"<split>|<cluster>"` and `"<split>|<barcode>"`
@@ -238,8 +238,8 @@ The output is described fully in the README ("Data format"). In short:
 
 | State | Has `layers/prob` | `uns/scmarco/binarization` | Validator | App |
 |---|---|---|---|---|
-| *built* | no | absent | `validate_h5ad.R --stage built` passes | **refuses to start** |
-| *binarized* | yes | `method`, `source` (the `--prob` value), `date` | `validate_h5ad.R` passes | loads |
+| *built* | no | absent | `validate_h5ad(stage = "built")` passes | **refuses to start** |
+| *binarized* | yes | `method`, `source` (the `--prob` value), `date` | `validate_h5ad()` passes | loads |
 
 Migrated legacy datasets are binarized from the start. Their `uns/scmarco/source`
 records where they came from, e.g. `sqlite:db.sqlite:ozel_2021_new`.

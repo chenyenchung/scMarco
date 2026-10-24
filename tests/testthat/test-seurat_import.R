@@ -2,6 +2,8 @@ root <- normalizePath(file.path(testthat::test_path(), "..", ".."))
 source(file.path(root, "src", "combo_core.R"))
 source(file.path(root, "src", "backend_h5ad.R"))
 source(file.path(root, "script", "lib_import.R"))
+suppressMessages(source(file.path(root, "script", "lib_write_h5ad.R")))
+source(file.path(root, "script", "lib_validate.R"))
 
 run_script <- function(script, args) {
   out <- suppressWarnings(system2(
@@ -88,12 +90,10 @@ test_that("build from metadata columns, then binarize from per-split files", {
   cells <- file.path(dir, "toy.cells.h5ad")
 
   # built: valid as such, refused as binarized and by the app
-  val <- run_script("validate_h5ad.R", c("--clusters", clusters, "--cells", cells,
-                                         "--stage", "built"))
-  expect_true(val$ok, info = log_of(val))
-  val <- run_script("validate_h5ad.R", c("--clusters", clusters))
-  expect_false(val$ok)
-  expect_match(log_of(val), "add_probability_h5ad.R")
+  val <- validate_h5ad(clusters, cells, stage = "built")
+  expect_length(val$errors, 0)
+  val <- validate_h5ad(clusters)
+  expect_match(val$errors, "layers/prob is missing.*add_probability_h5ad.R", all = FALSE)
   expect_error(
     ds_check_config(list(toy = list(clusters = clusters),
                          gone = list(clusters = file.path(dir, "nope.h5ad")))),
@@ -116,8 +116,8 @@ test_that("build from metadata columns, then binarize from per-split files", {
   expect_true(res$ok, info = log_of(res))
   expect_match(log_of(res), "Male 3, Female 2")
 
-  val <- run_script("validate_h5ad.R", c("--clusters", clusters, "--cells", cells))
-  expect_true(val$ok, info = log_of(val))
+  val <- validate_h5ad(clusters, cells)
+  expect_length(val$errors, 0)
   expect_silent(ds_check_config(list(toy = list(clusters = clusters))))
 
   ds <- expect_toy_binarized(clusters, cells)
@@ -160,8 +160,8 @@ test_that("legacy identities and wide table still build in one step", {
   expect_true(res$ok, info = log_of(res))
   expect_match(log_of(res), "legacy '<split>@<cluster>' identities")
   clusters <- file.path(dir, "toy.clusters.h5ad")
-  val <- run_script("validate_h5ad.R", c("--clusters", clusters))
-  expect_true(val$ok, info = log_of(val))
+  val <- validate_h5ad(clusters)
+  expect_length(val$errors, 0)
 
   ds <- ds_load("toy_legacy", list(label = "toy", clusters = clusters))
   expect_true(all(ds$bimodal["geneB", ]))
@@ -339,9 +339,8 @@ test_that("build from one object per split with different genes and assays", {
   expect_true(res$ok, info = log_of(res))
   clusters <- file.path(dir, "toy.clusters.h5ad")
   cells <- file.path(dir, "toy.cells.h5ad")
-  val <- run_script("validate_h5ad.R", c("--clusters", clusters, "--cells", cells,
-                                         "--stage", "built"))
-  expect_true(val$ok, info = log_of(val))
+  val <- validate_h5ad(clusters, cells, stage = "built")
+  expect_length(val$errors, 0)
 
   saveRDS(male_prob(), file.path(dir, "male.rds"))
   saveRDS(female_prob()[1:3, ], file.path(dir, "female.rds"))

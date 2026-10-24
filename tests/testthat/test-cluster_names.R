@@ -2,6 +2,7 @@ root <- normalizePath(file.path(testthat::test_path(), "..", ".."))
 source(file.path(root, "src", "combo_core.R"))
 source(file.path(root, "src", "backend_h5ad.R"))
 suppressMessages(source(file.path(root, "script", "lib_write_h5ad.R")))
+source(file.path(root, "script", "lib_validate.R"))
 
 run_script <- function(script, args) {
   # some calls are expected to fail; their exit status is checked below
@@ -74,9 +75,9 @@ test_that("--split-labels migrates both files and keeps the data", {
   expect_equal(unname(ds$prob[, "a"]), p$prob[, 1])
   expect_equal(as.character(ds_cells_obs(ds)$cluster), c("154", "12", "12", "9"))
 
-  res <- run_script("validate_h5ad.R", c("--clusters", p$clusters, "--cells", p$cells))
-  expect_true(res$ok, info = paste(res$log, collapse = "\n"))
-  expect_false(any(grepl("look like", res$log)))
+  val <- validate_h5ad(p$clusters, p$cells)
+  expect_length(val$errors, 0)
+  expect_false(any(grepl("look like", val$warnings)))
 
   # a second run refuses: the names are already split out
   res <- run_script("set_cluster_names.R",
@@ -157,8 +158,8 @@ test_that("--ids gives new IDs and names to both files and keeps the data", {
   expect_equal(rownames(ds$clusters_h$obs), c("F|5+6", "F|154", "F|9", "M|5+6", "M|9"))
   expect_equal(unname(ds$prob[, "a"]), p$prob[, 1])
   expect_equal(as.character(ds_cells_obs(ds)$cluster), c("154", "5+6", "5+6", "9"))
-  res <- run_script("validate_h5ad.R", c("--clusters", p$clusters, "--cells", p$cells))
-  expect_true(res$ok, info = paste(res$log, collapse = "\n"))
+  val <- validate_h5ad(p$clusters, p$cells)
+  expect_length(val$errors, 0)
 
   # every cluster must be listed, and new IDs must be unique
   writeLines(c("cluster_id\tnew_id", "9\t1"), tsv)

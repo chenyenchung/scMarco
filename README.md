@@ -96,7 +96,7 @@ reader (`src/backend_h5ad.R`); Python is not needed at runtime.
 | `sqlite_to_h5ad.R` | migrate a legacy scMarco SQLite table |
 | `h5v1_to_h5ad.R` | migrate a legacy scMarco-Ding-lab `db.h5` dataset |
 | `set_cluster_names.R` | export or apply a `cluster_id`/`name` table; `--ids` gives every cluster a new ID (and name) from a `cluster_id`/`new_id`/`name` table; `--split-labels TRUE` turns legacy `name (id)` labels into ID + name |
-| `validate_h5ad.R` | check a dataset before deploying (`--stage built` for one without probabilities yet) |
+| `lib_validate.R` | `validate_h5ad(clusters, cells, stage)`: check a dataset before deploying (`stage = "built"` for one without probabilities yet); `add_probability_h5ad.R` runs it after writing |
 | `find_pairs.R` | offline ranking of marker pairs for every cluster (CSV with `cluster` ID and `cluster_name`) |
 
 Each script prints its usage at the top of the file. The builders need the HDF5

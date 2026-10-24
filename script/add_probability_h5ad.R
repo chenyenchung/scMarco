@@ -27,6 +27,7 @@ get_script_dir <- function() {
 root <- dirname(get_script_dir())
 source(file.path(get_script_dir(), "lib_write_h5ad.R"))
 source(file.path(get_script_dir(), "lib_import.R"))
+source(file.path(get_script_dir(), "lib_validate.R"))
 source(file.path(root, "src", "backend_h5ad.R"))
 
 args <- parse_cli(list(clusters = NA, prob = NA))
@@ -49,13 +50,7 @@ n_bim <- colSums(p$bimodal_by_split)
 message("Wrote probabilities to ", args$clusters, "; bimodal genes per split: ",
         paste(sprintf("%s %d", names(n_bim), n_bim), collapse = ", "))
 
-out <- system2(
-  file.path(R.home("bin"), "Rscript"),
-  c(file.path(get_script_dir(), "validate_h5ad.R"), "--clusters", args$clusters,
-    "--stage", "binarized"),
-  stdout = TRUE, stderr = TRUE
-)
-message(paste(out, collapse = "\n"))
-if (!is.null(attr(out, "status")) && attr(out, "status") != 0) {
+res <- validate_h5ad(args$clusters, stage = "binarized")
+if (!report_validation(res, args$clusters)) {
   stop("Validation failed after writing ", args$clusters, call. = FALSE)
 }
