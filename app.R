@@ -82,8 +82,12 @@ ui <- fluidPage(
         multiple = TRUE
       ),
       sliderInput(
-        "pos_cut", "Probability threshold (ON if > threshold)",
-        min = 0, max = 1, step = 0.05, value = 0.5
+        "margin", "Confidence margin (%)",
+        min = 1, max = 50, step = 1, value = 10
+      ),
+      helpText(
+        "ON if P(On) \u2265 100% \u2212 margin, OFF if P(On) \u2264 margin;",
+        "in between is ambiguous (gray) and never counts as ON or OFF."
       ),
       uiOutput("splits_selector"),
       tabsetPanel(
@@ -140,7 +144,11 @@ server <- function(input, output, session) {
     g
   })
 
-  b <- reactive(ds_binarize(ds(), input$pos_cut))
+  # Dropdown choices for views that also show unimodal genes, labeled as such
+  all_gene_choices <- reactive(gene_choices(ds(), all_genes()))
+
+  margin <- reactive(input$margin / 100)
+  b <- reactive(ds_binarize(ds(), margin()))
 
   observeEvent(ds(), {
     updateSelectizeInput(session, "clusters_of_interest",
@@ -198,10 +206,11 @@ server <- function(input, output, session) {
     b = b,
     genes = genes,
     all_genes = all_genes,
+    all_gene_choices = all_gene_choices,
     idents = reactive(input$clusters_of_interest),
     required = required,
     min_n = min_n,
-    cut = reactive(input$pos_cut),
+    margin = margin,
     split_label = reactive(ds()$split_label),
     first_mark = first_mark,
     parent_session = session

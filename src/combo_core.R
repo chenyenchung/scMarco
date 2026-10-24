@@ -3,29 +3,38 @@
 # Pure functions (no Shiny, no I/O) shared by every tab. They operate on a
 # "binarized dataset" produced by binarize():
 #
-#   on[gene, cluster, split]  logical  prob > cut_off (FALSE when the cluster
-#                                      is absent from the split or the gene is
-#                                      non-bimodal in that split)
+#   on[gene, cluster, split]  logical  confidently ON: prob >= 1 - margin
+#                                      (FALSE when the cluster is absent from
+#                                      the split or the gene is non-bimodal in
+#                                      that split)
+#   ambiguous[gene, cluster, split]
+#                             logical  margin < prob < 1 - margin: neither
+#                                      confidently ON nor confidently OFF
 #   present[cluster, split]   logical  the cluster exists in the split
 #   bimodal[gene, split]      logical  the mixture model called the gene bimodal
 #
-# Semantics shared by all functions:
+# Semantics shared by all functions (ambiguous calls behave like NA, so they
+# never help a gene):
 #   - A gene "passes" in a cluster when it is ON in every `required` split and
-#     ON in at least `min_n` splits overall.
-#   - Off-target expression is counted if the gene is ON in ANY split of the
-#     other cluster (a conservative choice kept from both legacy variants).
+#     ON in at least `min_n` splits overall; ambiguous is not ON.
+#   - Off-target expression is counted if the gene is ON or ambiguous in ANY
+#     split of the other cluster (a conservative choice kept from both legacy
+#     variants).
 
 binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
-                     cut_off, bimodal = NULL) {
+                     margin, bimodal = NULL) {
   #' prob: n_obs x n_genes numeric matrix (one row per split x cluster that
   #'   exists), colnames = genes
   #' obs_split, obs_cluster: character vectors of length n_obs
   #' splits, clusters: the full, ordered level sets
+  #' margin: confidence margin in (0, 0.5]; ON when prob >= 1 - margin, OFF
+  #'   when prob <= margin, ambiguous in between. At 0.5 there is no ambiguous
+  #'   band and ON is prob > 0.5.
   #' bimodal: optional n_genes x n_splits logical matrix
   stopifnot(
     nrow(prob) == length(obs_split),
     length(obs_split) == length(obs_cluster),
-    cut_off >= 0, cut_off <= 1
+    margin > 0, margin <= 0.5
   )
   genes <- colnames(prob)
   on <- array(
@@ -33,6 +42,7 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
     dim = c(length(genes), length(clusters), length(splits)),
     dimnames = list(genes, clusters, splits)
   )
+  ambiguous <- on
   present <- matrix(
     FALSE, length(clusters), length(splits),
     dimnames = list(clusters, splits)
@@ -45,9 +55,14 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
   }
   present[cbind(ci, si)] <- TRUE
 
-  hit <- !is.na(prob) & prob > cut_off
+  # tolerance so slider steps such as 1 - 0.3 land on 0.7
+  eps <- 1e-9
+  off <- is.na(prob) | prob <= margin + eps
+  hit <- !off & prob >= 1 - margin - eps
+  unsure <- !off & !hit
   for (i in seq_len(nrow(prob))) {
     on[, ci[i], si[i]] <- hit[i, ]
+    ambiguous[, ci[i], si[i]] <- unsure[i, ]
   }
 
   if (is.null(bimodal)) {
@@ -59,13 +74,14 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
     bimodal <- bimodal[genes, splits, drop = FALSE]
     for (s in seq_along(splits)) {
       on[!bimodal[, s], , s] <- FALSE
+      ambiguous[!bimodal[, s], , s] <- FALSE
     }
   }
 
   structure(
     list(
-      on = on, present = present, bimodal = bimodal,
-      genes = genes, clusters = clusters, splits = splits, cut_off = cut_off
+      on = on, ambiguous = ambiguous, present = present, bimodal = bimodal,
+      genes = genes, clusters = clusters, splits = splits, margin = margin
     ),
     class = "scmarco_binarized"
   )
@@ -97,9 +113,11 @@ pass_matrix <- function(b, required, min_n, clusters = b$clusters,
   pass
 }
 
-# gene x cluster logical: gene is ON in any split
+# gene x cluster logical: gene is ON, or ambiguous, in any split
 any_on <- function(b, genes = b$genes, clusters = b$clusters) {
-  out <- rowSums(b$on[genes, clusters, , drop = FALSE], dims = 2) > 0
+  maybe <- b$on[genes, clusters, , drop = FALSE] |
+    b$ambiguous[genes, clusters, , drop = FALSE]
+  out <- rowSums(maybe, dims = 2) > 0
   dim(out) <- c(length(genes), length(clusters))
   dimnames(out) <- list(genes, clusters)
   out
@@ -116,7 +134,8 @@ target_genes <- function(b, ident, required, min_n, genes = b$genes) {
 }
 
 offtarget_counts <- function(b, genes, exclude) {
-  #' Number of other clusters in which each gene is ON in any split
+  #' Number of other clusters in which each gene is ON (or ambiguous) in any
+  #' split
   others <- setdiff(b$clusters, exclude)
   if (length(genes) == 0) {
     return(setNames(integer(0), character(0)))
@@ -154,7 +173,8 @@ clusters_expressing <- function(b, genes, required, min_n,
 distinct_within <- function(b, idents, required, min_n, k = 1,
                             genes = b$genes) {
   #' "Find distinct genes within": genes that pass in exactly k of `idents`
-  #' and are not ON (in any split) in any other cluster of `idents`.
+  #' and are not ON or ambiguous (in any split) in any other cluster of
+  #' `idents`.
   #' Returns a data.frame(cluster, gene, offtargets), where offtargets counts
   #' clusters OUTSIDE `idents` that also express the gene, sorted best first
   #' within each cluster; zero rows when nothing is found.
@@ -202,8 +222,8 @@ empty_pairs <- function() {
 pair_offtargets <- function(b, ident, required, min_n, first = NULL,
                             limit = 50, genes = b$genes) {
   #' Rank gene pairs that both pass in `ident` by the number of OTHER
-  #' clusters in which both genes are ON (any split). If `first` is given,
-  #' only pairs containing it are returned.
+  #' clusters in which both genes are ON or ambiguous (any split). If `first`
+  #' is given, only pairs containing it are returned.
   #' Returns data.frame(gene1, gene2, offtargets, single_offtargets).
   cand <- target_genes(b, ident, required, min_n, genes = genes)
   if (!is.null(first)) {
@@ -246,7 +266,8 @@ pair_offtargets <- function(b, ident, required, min_n, first = NULL,
 }
 
 combo_offtarget_clusters <- function(b, genes, exclude = character(0)) {
-  #' Clusters (other than `exclude`) in which ALL `genes` are ON in some split
+  #' Clusters (other than `exclude`) in which ALL `genes` are ON (or
+  #' ambiguous) in some split
   genes <- intersect(genes, b$genes)
   if (length(genes) == 0) {
     return(character(0))
@@ -257,7 +278,7 @@ combo_offtarget_clusters <- function(b, genes, exclude = character(0)) {
 
 state_table <- function(b, genes, clusters = b$clusters) {
   #' Long table of per-gene states used by the tile plots:
-  #' "Expressed", "Not expressed", "Non-bimodal", "Absent"
+  #' "Expressed", "Not expressed", "Ambiguous", "Non-bimodal", "Absent"
   genes <- intersect(genes, b$genes)
   grid <- expand.grid(
     gene = genes, cluster = clusters, split = b$splits,
@@ -267,12 +288,14 @@ state_table <- function(b, genes, clusters = b$clusters) {
   ci <- match(grid$cluster, b$clusters)
   si <- match(grid$split, b$splits)
   on <- b$on[cbind(gi, ci, si)]
+  unsure <- b$ambiguous[cbind(gi, ci, si)]
   present <- b$present[cbind(ci, si)]
   bimodal <- b$bimodal[cbind(gi, si)]
   grid$state <- ifelse(
     !present, "Absent",
     ifelse(!bimodal, "Non-bimodal",
-           ifelse(on, "Expressed", "Not expressed"))
+           ifelse(unsure, "Ambiguous",
+                  ifelse(on, "Expressed", "Not expressed")))
   )
   grid
 }

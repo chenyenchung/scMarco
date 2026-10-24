@@ -6,6 +6,7 @@ library(ggplot2)
 STATE_FILL <- c(
   "Expressed" = "#1B1B1B",
   "Not expressed" = "#FFFFFF",
+  "Ambiguous" = "#D3D3D3",
   "Non-bimodal" = "#D3D3D3",
   "Absent" = "#FFFFFF"
 )
@@ -117,19 +118,21 @@ coexp_data <- function(ds, b, genes) {
   if (length(clusters) == 0) return(NULL)
 
   st <- state_table(b, genes, clusters = clusters)
-  on <- b$on[genes, clusters, , drop = FALSE]
-  co <- apply(on, c(2, 3), all)
   co_df <- expand.grid(
     cluster = clusters, split = b$splits, stringsAsFactors = FALSE
   )
   co_df$gene <- "Co-expressed"
+  # Like NA: a gene that is non-bimodal or ambiguous in a cluster x split
+  # leaves co-expression there undetermined, whatever the other genes do
+  key <- paste(st$cluster, st$split, sep = "\r")
+  co_key <- paste(co_df$cluster, co_df$split, sep = "\r")
+  has <- function(state) tapply(st$state == state, key, any)[co_key]
   co_df$state <- ifelse(
-    !b$present[cbind(match(co_df$cluster, b$clusters),
-                     match(co_df$split, b$splits))],
-    "Absent",
-    ifelse(co[cbind(match(co_df$cluster, clusters),
-                    match(co_df$split, b$splits))],
-           "Expressed", "Not expressed")
+    has("Absent"), "Absent",
+    ifelse(has("Non-bimodal"), "Non-bimodal",
+           ifelse(has("Ambiguous"), "Ambiguous",
+                  ifelse(tapply(st$state == "Expressed", key, all)[co_key],
+                         "Expressed", "Not expressed")))
   )
   df <- rbind(st[, c("gene", "cluster", "split", "state")], co_df)
 
@@ -163,6 +166,9 @@ coexp_cell_fraction <- function(ds, genes) {
 coexp_plot <- function(ds, b, genes, show_pct = FALSE) {
   df <- coexp_data(ds, b, genes)
   if (is.null(df)) {
+    if (!any(b$bimodal[intersect(genes, b$genes), , drop = FALSE])) {
+      return(message_plot("None of the selected genes is bimodal, so none has an ON/OFF state."))
+    }
     return(message_plot("None of the selected genes is expressed."))
   }
   df$x <- factor(df$split, levels = ds$splits)
@@ -434,7 +440,7 @@ mixture_p_on <- function(x, fit) {
   plogis(qlogis(pi_on) + slope * (x - (fit$on_level + fit$off_level) / 2))
 }
 
-mixture_plot <- function(ds, gene, model, highlight = character(0), cut_off = 0.5) {
+mixture_plot <- function(ds, gene, model, highlight = character(0), margin = 0.5) {
   #' model: a mixture model of the dataset (see mixture_model_choices()); when
   #' it was fit across several splits, their split x cluster averages are pooled
   fit <- ds_mixture_fit(ds, gene, model)
@@ -508,7 +514,8 @@ mixture_plot <- function(ds, gene, model, highlight = character(0), cut_off = 0.
 
   curve <- data.frame(x = grid, y = mixture_p_on(grid, fit))
   bottom <- ggplot(curve, aes(x = x, y = y)) +
-    geom_hline(yintercept = cut_off, linetype = "dotted", color = "#7A7A7A") +
+    geom_hline(yintercept = unique(c(margin, 1 - margin)), linetype = "dotted",
+               color = "#7A7A7A") +
     geom_line(linewidth = 1, color = "#1B1B1B") +
     geom_rug(data = avg, aes(x = x), inherit.aes = FALSE,
              sides = "b", alpha = 0.4, color = "#555555") +
@@ -535,7 +542,12 @@ mixture_plot <- function(ds, gene, model, highlight = character(0), cut_off = 0.
     } else {
       "Cluster average: mean of log-normalized values (no cell-level file); the model was fit on log of the mean, so clusters may sit off the curve."
     },
-    sprintf("Dotted line: the probability threshold (%.2f).", cut_off),
+    if (margin < 0.5) {
+      sprintf("Dotted lines: ON at P(On) >= %.2f, OFF at P(On) <= %.2f; ambiguous in between.",
+              1 - margin, margin)
+    } else {
+      "Dotted line: ON above P(On) = 0.50."
+    },
     if (floored) sprintf("Parameters are stored to 2 decimals; values below %.3f were drawn as %.3f.",
                          MIXTURE_FLOOR, MIXTURE_FLOOR),
     if (length(absent) > 0) {

@@ -27,7 +27,7 @@ coexp_server <- function(id, ctx) {
     function(input, output, session) {
       observe({
         updateSelectizeInput(
-          session, 'split_genes', choices = ctx$genes(), server = TRUE
+          session, 'split_genes', choices = ctx$all_gene_choices(), server = TRUE
         )
       })
 

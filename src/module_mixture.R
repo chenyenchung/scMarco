@@ -24,7 +24,7 @@ mixture_server <- function(id, ctx) {
     function(input, output, session) {
       observe({
         updateSelectizeInput(
-          session, "gene_of_interest", choices = ctx$all_genes(), server = TRUE
+          session, "gene_of_interest", choices = ctx$all_gene_choices(), server = TRUE
         )
       })
 
@@ -55,7 +55,7 @@ mixture_server <- function(id, ctx) {
             input$model
           }
           list(ds = ctx$ds(), gene = input$gene_of_interest, model = model,
-               highlight = ctx$idents(), cut = ctx$cut())
+               highlight = ctx$idents(), margin = ctx$margin())
         }
       )
 
@@ -71,7 +71,7 @@ mixture_server <- function(id, ctx) {
         r <- request()
         shiny::req(r)
         with_spinner("Plotting...", mixture_plot(
-          r$ds, r$gene, r$model, highlight = r$highlight, cut_off = r$cut
+          r$ds, r$gene, r$model, highlight = r$highlight, margin = r$margin
         ))
       })
 

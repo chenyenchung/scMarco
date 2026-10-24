@@ -2,7 +2,7 @@ source(file.path(testthat::test_path(), "..", "..", "src", "combo_core.R"))
 
 # Toy dataset: 5 genes, clusters A/B/C, splits s1/s2/s3; C is absent from s3.
 # Values are probabilities; rows are split|cluster observations.
-toy <- function(cut_off = 0.5, bimodal = NULL) {
+toy <- function(margin = 0.5, bimodal = NULL) {
   obs <- data.frame(
     split = c("s1", "s1", "s1", "s2", "s2", "s2", "s3", "s3"),
     cluster = c("A", "B", "C", "A", "B", "C", "A", "B")
@@ -21,7 +21,7 @@ toy <- function(cut_off = 0.5, bimodal = NULL) {
   colnames(prob) <- paste0("g", 1:5)
   binarize(prob, obs$split, obs$cluster,
            splits = c("s1", "s2", "s3"), clusters = c("A", "B", "C"),
-           cut_off = cut_off, bimodal = bimodal)
+           margin = margin, bimodal = bimodal)
 }
 
 test_that("binarize marks absent clusters and uses a strict threshold", {
@@ -119,4 +119,48 @@ test_that("non-bimodal genes are never ON and are reported as such", {
   expect_equal(st$state[st$cluster == "A" & st$split == "s3"], "Non-bimodal")
   expect_equal(st$state[st$cluster == "C" & st$split == "s3"], "Absent")
   expect_equal(st$state[st$cluster == "A" & st$split == "s1"], "Expressed")
+})
+
+test_that("a non-bimodal gene makes co-expression undetermined, like NA", {
+  source(file.path(testthat::test_path(), "..", "..", "src", "plot_core.R"))
+  bim <- matrix(TRUE, 5, 3, dimnames = list(paste0("g", 1:5), paste0("s", 1:3)))
+  bim["g2", "s3"] <- FALSE
+  b <- toy(bimodal = bim)
+  co <- coexp_data(NULL, b, c("g1", "g2"))
+  co <- co[co$gene == "Co-expressed", ]
+  state <- function(cl, s) co$state[co$cluster == cl & co$split == s]
+  expect_equal(state("A", "s1"), "Expressed")
+  expect_equal(state("B", "s1"), "Not expressed")
+  # gray wins over both ON (g1 in A) and OFF (g1 in B)
+  expect_equal(state("A", "s3"), "Non-bimodal")
+  expect_equal(state("B", "s3"), "Non-bimodal")
+})
+
+test_that("calls inside the confidence margin are ambiguous and never help", {
+  b <- toy(margin = 0.2)
+  # 0.9 is ON, 0.1 is OFF, 0.5 (g5 in s1 A) is ambiguous
+  expect_true(b$on["g1", "A", "s1"])
+  expect_false(b$on["g5", "A", "s1"])
+  expect_true(b$ambiguous["g5", "A", "s1"])
+  expect_false(any(b$ambiguous[c("g1", "g2", "g3", "g4"), , ]))
+  # ambiguous is not ON in the target...
+  expect_false("g5" %in% target_genes(b, "A", "s1", 1))
+  # ...but counts as possibly ON off-target
+  expect_equal(offtarget_counts(b, "g5", exclude = "B"), c(g5 = 1L))
+  expect_equal(state_table(b, "g5", clusters = "A")$state,
+               c("Ambiguous", "Not expressed", "Not expressed"))
+  # the band edges are not ambiguous: margin 0.1 makes 0.9 ON and 0.1 OFF
+  b <- toy(margin = 0.1)
+  expect_true(b$on["g1", "A", "s1"])
+  expect_false(b$ambiguous["g1", "B", "s1"])
+})
+
+test_that("an ambiguous gene makes co-expression undetermined", {
+  source(file.path(testthat::test_path(), "..", "..", "src", "plot_core.R"))
+  b <- toy(margin = 0.2)
+  co <- coexp_data(NULL, b, c("g1", "g5"))
+  co <- co[co$gene == "Co-expressed", ]
+  state <- function(cl, s) co$state[co$cluster == cl & co$split == s]
+  expect_equal(state("A", "s1"), "Ambiguous")
+  expect_equal(state("A", "s2"), "Not expressed")
 })

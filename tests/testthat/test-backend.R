@@ -17,6 +17,7 @@ test_that("the SQLite-derived fixture loads as a dataset", {
   expect_equal(nrow(ds$prob), length(ds$obs_split))
   # no bimodality information -> every gene is analysed
   expect_identical(ds$analysis_genes, ds$all_genes)
+  expect_false(any(grepl("unimodal", names(gene_choices(ds, ds$all_genes)))))
 
   b <- ds_binarize(ds, 0.5)
   expect_s3_class(b, "scmarco_binarized")
@@ -73,6 +74,9 @@ test_that("a written pair round-trips through the reader", {
   expect_equal(ds$splits, c("F", "M"))
   expect_equal(ds$split_label, "sex")
   expect_equal(ds$analysis_genes, c("a", "b"))
+  # unimodal genes stay selectable outside marker discovery, labeled as such
+  expect_equal(gene_choices(ds, ds$all_genes),
+               c(a = "a", b = "b", `c (unimodal)` = "c"))
   expect_true(ds$has_pct)
   expect_equal(unname(ds$bimodal["c", ]), c(FALSE, FALSE))
   expect_true(is.na(ds$prob[1, "c"]))

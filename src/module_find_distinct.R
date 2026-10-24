@@ -62,7 +62,7 @@ find_distinct_server <- function(id, ctx, coexp_session) {
             HTML(paste0(
               "<p>No gene distinguishes the selected clusters. ",
               describe_splits(ctx$required(), ctx$min_n(), ctx$split_label()),
-              "</p><p>Try another threshold, fewer required ",
+              "</p><p>Try a larger confidence margin, fewer required ",
               ctx$split_label(), "s, different clusters, or a broader gene list.</p>"
             ))
           )
@@ -166,7 +166,7 @@ find_distinct_server <- function(id, ctx, coexp_session) {
           updateSelectizeInput(
             coexp_session,
             inputId = "split_genes",
-            choices = ctx$genes(),
+            choices = ctx$all_gene_choices(),
             selected = genes,
             server = TRUE
           )

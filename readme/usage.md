@@ -30,7 +30,10 @@ See the dataset descriptions above.
 #### Which genes to consider?
 
 By default every gene the mixture model called bimodal is used for marker
-finding (every gene, when the dataset has no bimodality information). You can
+finding (every gene, when the dataset has no bimodality information). Unimodal
+genes are left out of marker finding but can still be plotted (co-expression,
+expression trend, UMAP and mixture model), where they are listed as
+`gene (unimodal)`. You can
 restrict the analysis to a gene list. Gene symbols change between genome
 releases, so **check that your list uses the same naming scheme as the data**.
 
@@ -42,10 +45,18 @@ highlight (**Plot expression trend**). Annotated clusters are shown as
 `name (id)`, e.g. `Mi4 (154)`, and unannotated ones by their ID; you can type
 either to search.
 
-#### Probability threshold
+#### Confidence margin
 
-A gene is **ON** in a cluster when its probability of being expressed is
-greater than this threshold.
+A gene is **ON** in a cluster when its probability of being expressed is at
+least 100% minus the margin, and **OFF** when it is at most the margin; in
+between it is **ambiguous**. With the default 10%, ON is ≥ 0.9, OFF is ≤ 0.1
+and (0.1, 0.9) is ambiguous. At 50% there is no ambiguous band and ON means
+greater than 0.5.
+
+Ambiguous calls behave like `NA`: they never count as ON for the cluster you
+are finding markers for, but they do count as possible expression in the
+other clusters, so a marker must be confidently ON in its cluster and
+confidently OFF elsewhere. They are drawn gray, like non-bimodal genes.
 
 #### Must be ON in these … / ON in at least this many …
 
@@ -73,7 +84,8 @@ within**.
 
 Among the clusters of interest, find genes that are ON in exactly one of them
 (or the number you choose) and OFF in the others. The ON/OFF plot shows each gene
-per cluster: black is ON, white is OFF, gray is a gene that is not bimodal there,
+per cluster: black is ON, white is OFF, gray is a gene that is not bimodal there
+or whose call is ambiguous,
 and a cross marks a cluster that does not exist in that stage, sex or species.
 When you arrived here from **From cluster** or **From gene**, a table checks
 each combination against the **whole dataset**, not just the selected clusters.
@@ -81,7 +93,9 @@ each combination against the **whole dataset**, not just the selected clusters.
 ### Co-expression plot
 
 Select genes and see, for every cluster that expresses any of them, where each
-gene and the full combination are ON. With cell-level data, the percentage on
+gene and the full combination are ON. Where any gene is not bimodal or is ambiguous
+(gray), the combination is gray too: its ON/OFF state is undetermined there, like `NA`.
+With cell-level data, the percentage on
 the **Co-expressed** panel is the share of cells that express **all** the genes.
 
 ### Plot expression trend
@@ -103,6 +117,7 @@ cluster averages (how many clusters express the gene at each level) with the
 two Gaussians the mixture model fit, and the subtitle says whether the gene was
 called bimodal. The bottom panel is the resulting P(On) curve, which rises from
 0 to 1 between the OFF and ON levels; arrows point to the clusters of interest
-on it, and the dotted line is the probability threshold. Shown only for
+on it, and the dotted lines mark the confidence margin (ON above the upper
+one, OFF below the lower one). Shown only for
 datasets that store the model's fit parameters.
 

@@ -309,6 +309,7 @@ ds_load <- function(id, entry) {
     mixture_models = mixture_models,
     all_genes = ch$genes,
     analysis_genes = analysis_genes,
+    unimodal_genes = setdiff(ch$genes, analysis_genes),
     split_label = pick(entry$split_label, pick(meta$split_label, "split")),
     ordered_splits = isTRUE(pick(entry$ordered_splits, meta$ordered_splits)),
     has_pct = "pct_pos" %in% ch$layers,
@@ -322,9 +323,10 @@ ds_load <- function(id, entry) {
   ds
 }
 
-ds_binarize <- function(ds, cut_off) {
-  #' Binarized view of the dataset at a threshold (memoized, a few per dataset)
-  key <- format(cut_off, nsmall = 3)
+ds_binarize <- function(ds, margin) {
+  #' Binarized view of the dataset at a confidence margin (memoized, a few per
+  #' dataset)
+  key <- format(margin, nsmall = 3)
   if (!is.null(ds$binarized[[key]])) {
     return(ds$binarized[[key]])
   }
@@ -335,10 +337,18 @@ ds_binarize <- function(ds, cut_off) {
   b <- binarize(
     ds$prob, ds$obs_split, ds$obs_cluster,
     splits = ds$splits, clusters = ds$clusters,
-    cut_off = cut_off, bimodal = ds$bimodal
+    margin = margin, bimodal = ds$bimodal
   )
   ds$binarized[[key]] <- b
   b
+}
+
+gene_choices <- function(ds, genes) {
+  #' Choices for Shiny inputs: "gene (unimodal)" shown for genes the mixture
+  #' model never called bimodal (kept out of marker discovery), the gene
+  #' returned
+  label <- ifelse(genes %in% ds$unimodal_genes, paste0(genes, " (unimodal)"), genes)
+  setNames(genes, label)
 }
 
 ds_cluster_layer_long <- function(ds, layer, genes, clusters = NULL) {

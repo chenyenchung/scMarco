@@ -96,7 +96,7 @@ umap_viz_server <- function(id, ctx) {
 
       observe({
         updateSelectizeInput(session, "gene_selection",
-                             choices = ctx$all_genes(), server = TRUE)
+                             choices = ctx$all_gene_choices(), server = TRUE)
       })
 
       request <- eventReactive(

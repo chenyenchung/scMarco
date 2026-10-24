@@ -31,7 +31,7 @@ lineplot_server <- function(id, ctx) {
     function(input, output, session) {
       observe({
         updateSelectizeInput(
-          session, "gene_of_interest", choices = ctx$all_genes(), server = TRUE
+          session, "gene_of_interest", choices = ctx$all_gene_choices(), server = TRUE
         )
       })
 

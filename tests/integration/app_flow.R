@@ -28,7 +28,7 @@ download_ok <- function(session, id, type) {
 for (ds_id in intersect(names(config$datasets), strsplit(Sys.getenv("ONLY", paste(names(config$datasets), collapse=",")), ",")[[1]])) {
   test_that(paste("main workflow runs on", ds_id), {
     shiny::testServer(server, {
-      session$setInputs(dataset = ds_id, gene_group_to_use = "All", pos_cut = 0.5)
+      session$setInputs(dataset = ds_id, gene_group_to_use = "All", margin = 10)
       ds_obj <- ds()
       session$setInputs(required_splits = character(0), min_n = 1)
 

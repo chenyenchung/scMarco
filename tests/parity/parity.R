@@ -62,8 +62,10 @@ for (ds_id in c("dmel_mixed", "four_species")) {
   ))
   legacy_genes <- ding$h5_get_bimodal_genes(h5, ds_id)
   stopifnot(setequal(legacy_genes, ds$analysis_genes))
-  for (cut in c(0.3, 0.5, 0.8)) {
-    b <- ds_binarize(ds, cut)
+  # The legacy apps use one strict cut; a 50% confidence margin is the same
+  # call (ON if > 0.5, no ambiguous band), so that is the only comparable one
+  for (cut in 0.5) {
+    b <- ds_binarize(ds, margin = cut)
     for (i in 1:4) {
       splits <- sample(ds$splits, sample(seq_along(ds$splits), 1))
       ident <- sample(ds$clusters, 1)
@@ -112,12 +114,12 @@ for (tbl in c("ozel_2021_new", "kurmangaliyev_2020_new")) {
   # The legacy table knows clusters by their old "name (id)" labels, which
   # the display labels must reproduce exactly
   id_of_label <- setNames(ds$clusters, ds$cluster_labels)
-  for (cut in c(0.5, 0.8)) {
+  for (cut in 0.5) {
     message("Querying ", tbl, " at cut ", cut, " (full table scan)...")
     prob_mat <- dbGetQuery(db, paste(
       "SELECT * FROM", tbl, sc$wherecat(c(paste("value >", cut), "type = 'prob'"))
     ))
-    b <- ds_binarize(ds, cut)
+    b <- ds_binarize(ds, margin = cut)
     for (i in 1:5) {
       n_sel <- sample(0:2, 1)
       sel <- sample(stages, n_sel)
