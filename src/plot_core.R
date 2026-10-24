@@ -270,7 +270,7 @@ reduction_label <- function(key) {
 
 split_reductions <- function(keys, splits) {
   #' Reductions computed separately per split, stored as X_<split> (umap) or
-  #' X_<split>_<reduction> (seurat_to_h5ad.R with one object per split).
+  #' X_<split>_<reduction> (seurat_to_h5ad() with one object per split).
   #' Returns list(<reduction> = c(<split> = key, ...)) with splits in order.
   groups <- list()
   for (s in splits[order(-nchar(splits))]) {
@@ -309,7 +309,7 @@ resolve_reduction <- function(ds, choice) {
 }
 
 reduction_axis <- function(key) {
-  #' Axis title stem: reductions named *tsne* (seurat_to_h5ad.R --reduction tsne) are tSNE
+  #' Axis title stem: reductions named *tsne* (seurat_to_h5ad(reduction = "tsne")) are tSNE
   if (grepl("tsne", key, ignore.case = TRUE)) "tSNE" else "UMAP"
 }
 

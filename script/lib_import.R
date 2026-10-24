@@ -1,6 +1,6 @@
 # Input checks and readers for building a dataset from new data: split and
 # cluster labels from a Seurat object, and mixture-model probability tables.
-# Sourced by seurat_to_h5ad.R and add_probability_h5ad.R; see
+# Used by seurat_to_h5ad() and add_probability() in lib_build.R; see
 # docs/expected_input.md for the formats and rules.
 
 QC_COLS <- c("diff.elpd", "diff.elpd.se", "bimodal.on_level", "bimodal.off_level",
@@ -25,11 +25,11 @@ seurat_labels <- function(meta, ident, split_col = "scmarco_split",
                           cluster_col = "scmarco_cluster", defaults = TRUE) {
   #' Split and cluster label of every cell.
   #' meta: the object's meta.data; ident: as.character(Idents(obj)).
-  #' split_col "none" puts every cell in one split named "all".
+  #' split_col NULL puts every cell in one split named "all".
   #' defaults: TRUE when both column names are the defaults, so the legacy
   #'   "<split>@<cluster>" identities may be used when neither column exists.
   has <- function(col) col %in% colnames(meta)
-  if (!has(cluster_col) && !(split_col != "none" && has(split_col)) && defaults) {
+  if (!has(cluster_col) && !(!is.null(split_col) && has(split_col)) && defaults) {
     message("No '", cluster_col, "' / '", split_col, "' metadata columns; ",
             "reading legacy '<split>@<cluster>' identities")
     parsed <- strsplit(ident, "@", fixed = TRUE)
@@ -39,21 +39,21 @@ seurat_labels <- function(meta, ident, split_col = "scmarco_split",
            "' nor identities of the form '<split>@<cluster>' (e.g. ",
            first_few(unique(ident[bad]), 3), ").\nAdd the columns, e.g. ",
            "obj$", split_col, " <- obj$sex; obj$", cluster_col,
-           " <- obj$seurat_clusters, or name yours with --split-col / --cluster-col.")
+           " <- obj$seurat_clusters, or name yours with split_col / cluster_col.")
     }
     return(list(split = vapply(parsed, `[`, "", 1),
                 cluster = vapply(parsed, `[`, "", 2)))
   }
   if (!has(cluster_col)) {
     fail("Metadata column '", cluster_col, "' not found. Columns: ",
-         first_few(colnames(meta), 10), ". Name the cluster column with --cluster-col.")
+         first_few(colnames(meta), 10), ". Name the cluster column with cluster_col.")
   }
   cluster <- meta[[cluster_col]]
-  if (split_col == "none") {
+  if (is.null(split_col)) {
     split <- rep("all", nrow(meta))
   } else if (!has(split_col)) {
     fail("Metadata column '", split_col, "' not found. Name the split column with ",
-         "--split-col, or pass --split-col none for a dataset with one split.")
+         "split_col, or pass split_col = NULL for a dataset with one split.")
   } else {
     split <- meta[[split_col]]
   }
@@ -93,27 +93,6 @@ read_seurat <- function(path) {
   obj
 }
 
-parse_seurat_arg <- function(arg) {
-  #' --seurat value -> object path(s). "obj.rds": one object, unnamed.
-  #' "P15=a.rds,P30=b.rds": one object per split, named by split.
-  if (!grepl("=", arg, fixed = TRUE)) {
-    if (!file.exists(arg)) fail("Seurat object not found: ", arg)
-    return(arg)
-  }
-  pairs <- strsplit(strsplit(arg, ",", fixed = TRUE)[[1]], "=", fixed = TRUE)
-  if (any(lengths(pairs) != 2)) {
-    fail("--seurat must be one .rds or look like Split1=file1.rds,Split2=file2.rds; got ", arg)
-  }
-  files <- vapply(pairs, `[`, "", 2)
-  names(files) <- vapply(pairs, `[`, "", 1)
-  if (anyDuplicated(names(files))) {
-    fail("Split(s) given twice in --seurat: ", first_few(unique(names(files)[duplicated(names(files))])))
-  }
-  missing <- files[!file.exists(files)]
-  if (length(missing) > 0) fail("Seurat object(s) not found: ", first_few(missing))
-  files
-}
-
 seurat_reduction <- function(obj, red_name, cells, context = "") {
   #' First two dimensions of reduction `red_name` for `cells`. A missing
   #' reduction is an error that lists the object's reductions.
@@ -122,7 +101,7 @@ seurat_reduction <- function(obj, red_name, cells, context = "") {
     found <- SeuratObject::Reductions(obj)
     fail(context, "no reduction named '", red_name, "'. Reductions on the object: ",
          if (length(found) > 0) paste(found, collapse = ", ") else "none",
-         ". Pass --reduction <name> to store one of them, or --reduction none to build without one.")
+         ". Pass reduction = \"<name>\" to store one of them, or reduction = NULL to build without one.")
   }
   SeuratObject::Embeddings(obj, red_name)[cells, 1:2, drop = FALSE]
 }
@@ -160,32 +139,39 @@ check_labels <- function(split, cluster) {
 # Mixture-model probabilities
 # ---------------------------------------------------------------------------
 
-read_prob_arg <- function(arg) {
-  #' --prob value -> named list split -> table (genes x clusters + QC columns),
-  #' with attr "models": split -> the mixture model it was fit in.
-  #' A comma-separated list of items, each one of
-  #'   "Male=a.rds": one split's table, modeled on its own;
-  #'   "x.rds" holding a named list of tables: one model per split;
-  #'   "x.rds" holding a wide table with "<split>@<cluster>" columns: the
+read_prob <- function(prob) {
+  #' Mixture-model output -> named list split -> table (genes x clusters + QC
+  #' columns), with attr "models": split -> the mixture model it was fit in,
+  #' and attr "source": where the tables came from.
+  #' prob: a character vector of .rds paths or a list of tables / paths;
+  #'   each item is one of
+  #'   named, c(Male = "a.rds") or list(Male = df): one split's table,
+  #'     modeled on its own;
+  #'   unnamed, holding a named list of tables: one model per split;
+  #'   unnamed, holding a wide table with "<split>@<cluster>" columns: the
   #'     splits in it were modeled together, as one model.
-  items <- strsplit(arg, ",", fixed = TRUE)[[1]]
-  pairs <- strsplit(items, "=", fixed = TRUE)
-  if (any(lengths(pairs) > 2) || any(!nzchar(unlist(pairs)))) {
-    fail("--prob items must look like Split=file.rds or file.rds; got ", arg)
+  #' A single table (data.frame or matrix) is taken as a wide table.
+  if (is.data.frame(prob) || is.matrix(prob)) prob <- list(prob)
+  if (is.character(prob)) prob <- as.list(prob)
+  if (!is.list(prob) || length(prob) == 0) {
+    fail("prob must be .rds path(s) or a list of tables")
   }
-  files <- vapply(pairs, function(p) p[length(p)], "")
-  missing <- files[!file.exists(files)]
+  item_names <- if (is.null(names(prob))) rep("", length(prob)) else names(prob)
+  is_path <- vapply(prob, function(x) is.character(x) && length(x) == 1, logical(1))
+  paths <- as.character(unlist(prob[is_path]))
+  missing <- paths[!file.exists(paths)]
   if (length(missing) > 0) fail("Probability file(s) not found: ", first_few(missing))
 
   tables <- list()
   models <- character(0)
-  for (i in seq_along(pairs)) {
-    obj <- readRDS(files[i])
-    if (length(pairs[[i]]) == 2) {
-      add <- setNames(list(obj), pairs[[i]][1])
+  for (i in seq_along(prob)) {
+    obj <- if (is_path[i]) readRDS(prob[[i]]) else prob[[i]]
+    what <- if (is_path[i]) prob[[i]] else sprintf("prob item %d", i)
+    if (item_names[i] != "") {
+      add <- setNames(list(obj), item_names[i])
       model <- names(add)
     } else if (is.data.frame(obj) || is.matrix(obj)) {
-      message("Reading ", files[i], " as a wide table with '<split>@<cluster>' ",
+      message("Reading ", what, " as a wide table with '<split>@<cluster>' ",
               "columns: its splits were modeled together")
       add <- legacy_wide_to_split_tables(obj)
       model <- rep(paste(names(add), collapse = "+"), length(add))
@@ -193,7 +179,7 @@ read_prob_arg <- function(arg) {
       add <- obj
       model <- names(add)
     } else {
-      fail(files[i], " must hold a named list of per-split tables, e.g. ",
+      fail(what, " must hold a named list of per-split tables, e.g. ",
            "list(Male = male_df, Female = female_df), or a wide table with ",
            "'<split>@<cluster>' columns")
     }
@@ -201,6 +187,10 @@ read_prob_arg <- function(arg) {
     models <- c(models, setNames(model, names(add)))
   }
   attr(tables, "models") <- models
+  src <- ifelse(is_path, vapply(prob, function(x) if (is.character(x)) x[1] else "", ""),
+                "<table>")
+  attr(tables, "source") <- paste(ifelse(item_names == "", src, paste0(item_names, "=", src)),
+                                  collapse = ",")
   tables
 }
 

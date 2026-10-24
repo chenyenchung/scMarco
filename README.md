@@ -71,7 +71,7 @@ two things.
 changes when a cluster is annotated. The annotation lives in `cluster_name`
 (the same in every split of a cluster), and the app shows `name (id)`, or the
 bare ID while a cluster is unnamed. Change names with
-`script/set_cluster_names.R` rather than editing the file: it checks the table
+`set_cluster_names()` rather than editing the file: it checks the table
 and rewrites only `obs`.
 
 **`<id>.cells.h5ad`** (optional): enables the UMAP tab and the true
@@ -89,17 +89,29 @@ reader (`src/backend_h5ad.R`); Python is not needed at runtime.
 
 ## Building datasets (`script/`)
 
-| script | use |
-|---|---|
-| `seurat_to_h5ad.R` | new data: Seurat object (split and cluster ID in metadata columns), or one object per split (`--seurat P15=a.rds,P30=b.rds`), + optional subset UMAPs → a *built* dataset; `--prob` also binarizes it |
-| `add_probability_h5ad.R` | binarize a built dataset with the mixture-model output, one table per split; the app needs this step |
-| `sqlite_to_h5ad.R` | migrate a legacy scMarco SQLite table |
-| `h5v1_to_h5ad.R` | migrate a legacy scMarco-Ding-lab `db.h5` dataset |
-| `set_cluster_names.R` | export or apply a `cluster_id`/`name` table; `--ids` gives every cluster a new ID (and name) from a `cluster_id`/`new_id`/`name` table; `--split-labels TRUE` turns legacy `name (id)` labels into ID + name |
-| `lib_validate.R` | `validate_h5ad(clusters, cells, stage)`: check a dataset before deploying (`stage = "built"` for one without probabilities yet); `add_probability_h5ad.R` runs it after writing |
-| `find_pairs.R` | offline ranking of marker pairs for every cluster (CSV with `cluster` ID and `cluster_name`) |
+New datasets are built and edited with R functions. Load them with:
 
-Each script prints its usage at the top of the file. The builders need the HDF5
+```r
+source("script/load.R", chdir = TRUE)
+```
+
+| function | use |
+|---|---|
+| `seurat_to_h5ad()` | new data: Seurat object (split and cluster ID in metadata columns), or one object per split (`c(P15 = "a.rds", P30 = "b.rds")`), + optional subset UMAPs → a *built* dataset; `prob` also binarizes it |
+| `add_probability()` | binarize a built dataset with the mixture-model output, one table per split; the app needs this step |
+| `get_cluster_names()` / `set_cluster_names()` | read, export or apply a `cluster_id`/`name` table |
+| `set_cluster_ids()` | give every cluster a new ID (and name) from a `cluster_id`/`new_id`/`name` table |
+| `migrate_cluster_labels()` | turn legacy `name (id)` labels into ID + name |
+| `validate_h5ad(clusters, cells, stage)` | check a dataset before deploying (`stage = "built"` for one without probabilities yet); `add_probability()` runs it after writing |
+| `sqlite_to_h5ad()` | migrate a legacy scMarco SQLite table |
+| `h5v1_to_h5ad()` | migrate a legacy scMarco-Ding-lab `db.h5` dataset |
+| `find_pairs()` | offline ranking of marker pairs for every cluster (table with `cluster` ID and `cluster_name`; `out` also writes a CSV) |
+
+Each function documents its arguments at the top of its body:
+`script/lib_build.R` (build, binarize, cluster names), `script/lib_migrate.R`
+(legacy sources) and `script/lib_pairs.R`. Inputs can be file paths or objects
+already in memory. `script/misc/` holds one-off helpers for specific
+datasets; `source()` one after `load.R` when needed. Building needs the HDF5
 command-line tools (`h5repack`) for re-chunking.
 
 ## Code layout

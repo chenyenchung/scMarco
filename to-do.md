@@ -16,7 +16,7 @@ The input formats are specified in [`docs/expected_input.md`](docs/expected_inpu
 ## 0. Expected input spec
 
 - [x] Write `docs/expected_input.md` (Seurat object, probability tables, file states).
-- [ ] Keep it in sync with `script/lib_import.R` and `add_probability_h5ad.R` as they are implemented.
+- [ ] Keep it in sync with `script/lib_import.R` and `script/lib_build.R` as they are implemented.
 
 ## 1. Shared plumbing
 
@@ -35,17 +35,17 @@ The input formats are specified in [`docs/expected_input.md`](docs/expected_inpu
 
 ## 2. Migration (two paths only)
 
-- [ ] **Legacy SQLite** (`script/sqlite_to_h5ad.R`): take
-  `--legacy-config ../scMarco/config.yaml` so stages and labels come from the
-  old config instead of a manual `--stages`. Add `--all` to migrate every table
+- [ ] **Legacy SQLite** (`sqlite_to_h5ad()` in `script/lib_migrate.R`): take
+  `legacy_config = "../scMarco/config.yaml"` so stages and labels come from the
+  old config instead of a manual `stages`. Add a way to migrate every table
   listed there.
-- [ ] **Ding-lab HDF5 v1.0** (`script/h5v1_to_h5ad.R`): add `--all` for every
+- [ ] **Ding-lab HDF5 v1.0** (`h5v1_to_h5ad()` in `script/lib_migrate.R`): handle every
   dataset in `db.h5`, taking `split_label` from the legacy Ding config. Treat
   `pct_pos`, `lognorm` and `reduction` as optional, as the v1 spec does: with no
   `lognorm`, write no cells file and no `mean_lognorm`. Fix the per-split
   "non-bimodal" log line so it reports the value after the `is_bimodal` fix.
-- [ ] `script/migrate_legacy.R`: one wrapper that takes
-  `--sqlite <db> --legacy-config <yaml>` or `--h5 <db.h5> --legacy-config <yaml>`.
+- [ ] `migrate_legacy()` in `script/lib_migrate.R`: one function that takes
+  `sqlite = <db>` or `h5 = <db.h5>`, plus `legacy_config = <yaml>`.
   It converts the data, copies the gene lists the old config references into
   `gene_lists/`, writes `configs/<name>.yaml`, and runs the validator.
 - [ ] **Value round-trip check** (`tests/parity/roundtrip.R`), alongside the logic

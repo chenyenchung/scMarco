@@ -221,7 +221,7 @@ ds_check_config <- function(datasets) {
                                       if (is.null(path)) "(not set)" else path))
     } else if (!h5ad_exists(path, "layers/prob")) {
       problems <- c(problems, sprintf(
-        "- %s: %s has no probabilities yet. Add them with\n    Rscript script/add_probability_h5ad.R --clusters %s --prob <split>=<file.rds>,...",
+        "- %s: %s has no probabilities yet. Add them with\n    add_probability(\"%s\", c(<split> = \"<file.rds>\", ...))  # source(\"script/load.R\", chdir = TRUE)",
         id, path, path
       ))
     }
@@ -243,7 +243,7 @@ ds_load <- function(id, entry) {
   ch <- h5ad_open(entry$clusters)
   if (!"prob" %in% ch$layers) {
     stop(entry$clusters, " has no probabilities; add them with ",
-         "script/add_probability_h5ad.R", call. = FALSE)
+         "add_probability() (script/lib_build.R)", call. = FALSE)
   }
   meta <- ch$uns$scmarco
   if (is.null(meta)) meta <- list()

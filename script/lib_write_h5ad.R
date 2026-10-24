@@ -1,5 +1,5 @@
 # Shared writers for the scMarco h5ad schema (format_version 2.0).
-# Sourced by the converters in this folder; see README.md for the schema.
+# Used by lib_build.R and lib_migrate.R; see README.md for the schema.
 
 suppressPackageStartupMessages({
   library(anndataR)
@@ -216,25 +216,4 @@ rechunk_h5ad <- function(path, n_obs, sparse_x = FALSE, dense = character(0),
   }
   file.rename(tmp, path)
   invisible(TRUE)
-}
-
-parse_cli <- function(spec) {
-  #' spec: named list of defaults (NA = required). Accepts --name value.
-  args <- commandArgs(trailingOnly = TRUE)
-  out <- spec
-  i <- 1
-  while (i <= length(args)) {
-    key <- sub("^--", "", args[i])
-    if (!key %in% names(spec) || i == length(args)) {
-      stop("Unknown or incomplete argument: ", args[i],
-           "\nExpected: ", paste0("--", names(spec), collapse = " "))
-    }
-    out[[key]] <- args[i + 1]
-    i <- i + 2
-  }
-  missing <- names(out)[vapply(out, function(v) identical(v, NA), logical(1))]
-  if (length(missing) > 0) {
-    stop("Missing required argument(s): ", paste0("--", missing, collapse = " "))
-  }
-  out
 }

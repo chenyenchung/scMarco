@@ -1,20 +1,5 @@
 root <- normalizePath(file.path(testthat::test_path(), "..", ".."))
-source(file.path(root, "src", "combo_core.R"))
-source(file.path(root, "src", "backend_h5ad.R"))
-suppressMessages(source(file.path(root, "script", "lib_write_h5ad.R")))
-source(file.path(root, "script", "lib_validate.R"))
-
-run_script <- function(script, args) {
-  # some calls are expected to fail; their exit status is checked below
-  out <- suppressWarnings(system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(file.path(root, "script", script), args),
-    stdout = TRUE, stderr = TRUE,
-    env = "RENV_CONFIG_NAMESPACES_CHECK=FALSE"
-  ))
-  status <- attr(out, "status")
-  list(ok = is.null(status) || status == 0, log = out)
-}
+suppressMessages(source(file.path(root, "script", "load.R"), chdir = TRUE))
 
 make_legacy_pair <- function(dir) {
   # Two splits; labels embed IDs the legacy way, and one cluster is unnamed
@@ -60,13 +45,11 @@ test_that("a dataset without names uses its IDs as labels", {
   expect_equal(unname(ds$cluster_labels), ds$clusters)
 })
 
-test_that("--split-labels migrates both files and keeps the data", {
+test_that("migrate_cluster_labels migrates both files and keeps the data", {
   dir <- withr::local_tempdir()
   suppressMessages(suppressWarnings(p <- make_legacy_pair(dir)))
 
-  res <- run_script("set_cluster_names.R",
-                    c("--clusters", p$clusters, "--cells", p$cells, "--split-labels", "TRUE"))
-  expect_true(res$ok, info = paste(res$log, collapse = "\n"))
+  expect_message(migrate_cluster_labels(p$clusters, p$cells), "Split 2 labels")
 
   ds <- ds_load("toy", list(label = "Toy", clusters = p$clusters, cells = p$cells))
   expect_equal(ds$clusters, c("9", "12", "154"))
@@ -80,35 +63,39 @@ test_that("--split-labels migrates both files and keeps the data", {
   expect_false(any(grepl("look like", val$warnings)))
 
   # a second run refuses: the names are already split out
-  res <- run_script("set_cluster_names.R",
-                    c("--clusters", p$clusters, "--split-labels", "TRUE"))
-  expect_false(res$ok)
+  expect_error(migrate_cluster_labels(p$clusters), "already has cluster names")
 })
 
-test_that("--names applies a table and --export reads it back", {
+test_that("set_cluster_names applies a table and get_cluster_names reads it back", {
   dir <- withr::local_tempdir()
   suppressMessages(suppressWarnings(p <- make_legacy_pair(dir)))
-  run_script("set_cluster_names.R", c("--clusters", p$clusters, "--split-labels", "TRUE"))
+  suppressMessages(migrate_cluster_labels(p$clusters))
 
   tsv <- file.path(dir, "names.tsv")
   writeLines(c("cluster_id\tname", "12\tT4a", "154\t"), tsv)
-  res <- run_script("set_cluster_names.R", c("--clusters", p$clusters, "--names", tsv))
-  expect_true(res$ok, info = paste(res$log, collapse = "\n"))
+  res <- suppressMessages(set_cluster_names(p$clusters, tsv))
+  expect_equal(res$name, c("Tm27(Y)", "T4a", NA))
   ds <- ds_load("toy", list(label = "Toy", clusters = p$clusters))
   # 12 named, 154 cleared, 9 untouched
   expect_equal(unname(ds$cluster_labels), c("Tm27(Y) (9)", "T4a (12)", "154"))
 
   out <- file.path(dir, "export.tsv")
-  res <- run_script("set_cluster_names.R", c("--clusters", p$clusters, "--export", out))
-  expect_true(res$ok, info = paste(res$log, collapse = "\n"))
+  names_df <- suppressMessages(get_cluster_names(p$clusters, out))
+  expect_equal(names_df$name, c("Tm27(Y)", "T4a", NA))
   back <- read.delim(out, colClasses = "character", na.strings = character(0))
   expect_equal(back$cluster_id, c("9", "12", "154"))
   expect_equal(back$name, c("Tm27(Y)", "T4a", ""))
 
+  # a named vector or data.frame works as well as a file
+  suppressMessages(set_cluster_names(p$clusters, c(`154` = "Mi4", `12` = NA)))
+  expect_equal(get_cluster_names(p$clusters)$name, c("Tm27(Y)", NA, "Mi4"))
+  suppressMessages(set_cluster_names(p$clusters, back))
+  expect_equal(get_cluster_names(p$clusters)$name, c("Tm27(Y)", "T4a", NA))
+  expect_message(set_cluster_names(p$clusters, back), "No changes")
+
   writeLines(c("cluster_id\tname", "999\tFoo"), tsv)
-  res <- run_script("set_cluster_names.R", c("--clusters", p$clusters, "--names", tsv))
-  expect_false(res$ok)
-  expect_true(any(grepl("999", res$log)))
+  expect_error(set_cluster_names(p$clusters, tsv), "999")
+  expect_error(set_cluster_names(p$clusters, data.frame(id = "9")), "cluster_id and name")
 })
 
 test_that("names that differ between splits of a cluster are an error", {
@@ -129,28 +116,23 @@ test_that("clusters with no rows in any split keep only their ID", {
     cpath, c("F", "F"), c("Mi4 (154)", "12"), "F", c("12", "Ghost (77)", "Mi4 (154)"),
     c("a", "b"), layers = list(prob = matrix(0.5, 2, 2))
   )))
-  res <- run_script("set_cluster_names.R", c("--clusters", cpath, "--split-labels", "TRUE"))
-  expect_true(res$ok, info = paste(res$log, collapse = "\n"))
-  expect_true(any(grepl("only their ID is kept: Ghost \\(77\\)", res$log)))
+  expect_warning(suppressMessages(migrate_cluster_labels(cpath)),
+                 "only their ID is kept: Ghost \\(77\\)")
   ds <- ds_load("ghost", list(label = "Ghost", clusters = cpath))
   expect_equal(unname(ds$cluster_labels), c("12", "77", "Mi4 (154)"))
 
   tsv <- file.path(dir, "names.tsv")
   writeLines(c("cluster_id\tname", "77\tGhost"), tsv)
-  res <- run_script("set_cluster_names.R", c("--clusters", cpath, "--names", tsv))
-  expect_false(res$ok)
-  expect_true(any(grepl("no rows in any split", res$log)))
+  expect_error(set_cluster_names(cpath, tsv), "no rows in any split")
 })
 
-test_that("--ids gives new IDs and names to both files and keeps the data", {
+test_that("set_cluster_ids gives new IDs and names to both files and keeps the data", {
   dir <- withr::local_tempdir()
   suppressMessages(suppressWarnings(p <- make_legacy_pair(dir)))
   tsv <- file.path(dir, "ids.tsv")
   writeLines(c("cluster_id\tnew_id\tname", "12\t5+6\tSPG", "Mi4 (154)\t154\tMi4",
                "Tm27(Y) (9)\t9\t"), tsv)
-  res <- run_script("set_cluster_names.R",
-                    c("--clusters", p$clusters, "--cells", p$cells, "--ids", tsv))
-  expect_true(res$ok, info = paste(res$log, collapse = "\n"))
+  expect_message(set_cluster_ids(p$clusters, tsv, cells = p$cells), "Gave 3 clusters new IDs")
 
   ds <- ds_load("toy_ids", list(label = "Toy", clusters = p$clusters, cells = p$cells))
   expect_equal(ds$clusters, c("5+6", "9", "154"))
@@ -162,12 +144,9 @@ test_that("--ids gives new IDs and names to both files and keeps the data", {
   expect_length(val$errors, 0)
 
   # every cluster must be listed, and new IDs must be unique
-  writeLines(c("cluster_id\tnew_id", "9\t1"), tsv)
-  res <- run_script("set_cluster_names.R", c("--clusters", p$clusters, "--ids", tsv))
-  expect_false(res$ok)
-  expect_true(any(grepl("Missing", res$log)))
-  writeLines(c("cluster_id\tnew_id", "5+6\t1", "9\t1", "154\t2"), tsv)
-  res <- run_script("set_cluster_names.R", c("--clusters", p$clusters, "--ids", tsv))
-  expect_false(res$ok)
-  expect_true(any(grepl("Duplicate", res$log)))
+  expect_error(set_cluster_ids(p$clusters, data.frame(cluster_id = "9", new_id = "1")),
+               "Missing")
+  expect_error(set_cluster_ids(p$clusters, data.frame(cluster_id = c("5+6", "9", "154"),
+                                                      new_id = c("1", "1", "2"))),
+               "Duplicate")
 })

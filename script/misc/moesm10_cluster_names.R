@@ -1,5 +1,4 @@
-#!/usr/bin/env Rscript
-# Names table for script/set_cluster_names.R --names from the cluster
+# Names table for set_cluster_names() from the cluster
 # annotation of Simon et al. (2026, Nat. Neurosci., doi:10.1038/s41593-026-02256-6),
 # Supplementary Table 41593_2026_2256_MOESM10_ESM.xlsx (sheet "Annotation":
 # Cluster_number, Annotation, ...).
@@ -9,37 +8,32 @@
 # dataset cluster is looked up by ID. A cluster whose annotation is its own
 # number stays unnamed; clusters missing from the table are an error.
 #
-# Usage:
-#   Rscript script/misc/moesm10_cluster_names.R --xlsx 41593_2026_2256_MOESM10_ESM.xlsx \
-#     --clusters data/x.clusters.h5ad --out names.tsv
-#
-#   Needs readxl.
+# Usage (needs readxl):
+#   source("script/load.R", chdir = TRUE)
+#   source("script/misc/moesm10_cluster_names.R")
+#   names <- moesm10_cluster_names("41593_2026_2256_MOESM10_ESM.xlsx", "data/x.clusters.h5ad")
+#   set_cluster_names("data/x.clusters.h5ad", names)
 
-get_script_dir <- function() {
-  arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
-  dirname(normalizePath(sub("^--file=", "", arg[1])))
+moesm10_cluster_names <- function(xlsx, clusters, out = NULL) {
+  #' data.frame(cluster_id, name) for every cluster of `clusters` ("" =
+  #' unnamed); with `out`, also written there as a TSV.
+  tbl <- as.data.frame(readxl::read_excel(xlsx, sheet = "Annotation", col_types = "text"))
+  stopifnot(all(c("Cluster_number", "Annotation") %in% names(tbl)))
+  id <- trimws(tbl$Cluster_number)
+  ann <- trimws(tbl$Annotation)
+  ann[is.na(ann)] <- ""
+  if (anyDuplicated(id)) stop("Cluster number(s) listed twice: ", paste(unique(id[duplicated(id)]), collapse = ", "))
+  ann <- setNames(ifelse(ann == id, "", ann), id)
+
+  ids <- levels(h5ad_open(clusters)$obs$cluster)
+  missing <- setdiff(ids, names(ann))
+  if (length(missing) > 0) stop("Clusters missing from ", xlsx, ": ", paste(missing, collapse = ", "))
+
+  names_df <- data.frame(cluster_id = ids, name = unname(ann[ids]))
+  if (!is.null(out)) write.table(names_df, out, sep = "\t", quote = FALSE, row.names = FALSE)
+  message(sprintf("%d clusters, %d named; %d table rows not in the dataset (%s)",
+                  nrow(names_df), sum(names_df$name != ""),
+                  length(setdiff(names(ann), ids)),
+                  paste(setdiff(names(ann), ids), collapse = ", ")))
+  names_df
 }
-root <- dirname(dirname(get_script_dir()))
-source(file.path(root, "script", "lib_write_h5ad.R"))
-source(file.path(root, "src", "backend_h5ad.R"))
-
-args <- parse_cli(list(xlsx = NA, clusters = NA, out = NA))
-
-tbl <- as.data.frame(readxl::read_excel(args$xlsx, sheet = "Annotation", col_types = "text"))
-stopifnot(all(c("Cluster_number", "Annotation") %in% names(tbl)))
-id <- trimws(tbl$Cluster_number)
-ann <- trimws(tbl$Annotation)
-ann[is.na(ann)] <- ""
-if (anyDuplicated(id)) stop("Cluster number(s) listed twice: ", paste(unique(id[duplicated(id)]), collapse = ", "))
-ann <- setNames(ifelse(ann == id, "", ann), id)
-
-clusters <- levels(h5ad_open(args$clusters)$obs$cluster)
-missing <- setdiff(clusters, names(ann))
-if (length(missing) > 0) stop("Clusters missing from ", args$xlsx, ": ", paste(missing, collapse = ", "))
-
-out <- data.frame(cluster_id = clusters, name = unname(ann[clusters]))
-write.table(out, args$out, sep = "\t", quote = FALSE, row.names = FALSE)
-message(sprintf("Wrote %s: %d clusters, %d named; %d table rows not in the dataset (%s)",
-                args$out, nrow(out), sum(out$name != ""),
-                length(setdiff(names(ann), clusters)),
-                paste(setdiff(names(ann), clusters), collapse = ", ")))

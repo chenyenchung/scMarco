@@ -1,5 +1,5 @@
 # Validation of a scMarco dataset (format_version 2.0), used by
-# the scripts that write datasets and by the tests. Needs lib_write_h5ad.R
+# add_probability() and by the tests. Needs lib_write_h5ad.R
 # and src/backend_h5ad.R sourced first.
 
 validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
@@ -48,7 +48,7 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
     if (any(!is.na(embedded$name))) {
       warn(sum(!is.na(embedded$name)), " cluster IDs look like \"name (id)\" labels, e.g. ",
            embedded$label[!is.na(embedded$name)][1], "; split them with ",
-           "script/set_cluster_names.R --split-labels TRUE")
+           "migrate_cluster_labels()")
     }
   }
   empty <- setdiff(levels(ch$obs$cluster), as.character(ch$obs$cluster))
@@ -64,7 +64,7 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
 
   binarized <- "prob" %in% ch$layers
   if (!binarized && stage == "binarized") {
-    err("layers/prob is missing; add it with script/add_probability_h5ad.R ",
+    err("layers/prob is missing; add it with add_probability() ",
         "(or validate with stage = \"built\")")
   }
   if (binarized && !is.null(meta$binarization)) {

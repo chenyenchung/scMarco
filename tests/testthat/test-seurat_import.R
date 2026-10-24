@@ -1,21 +1,15 @@
 root <- normalizePath(file.path(testthat::test_path(), "..", ".."))
-source(file.path(root, "src", "combo_core.R"))
-source(file.path(root, "src", "backend_h5ad.R"))
-source(file.path(root, "script", "lib_import.R"))
-suppressMessages(source(file.path(root, "script", "lib_write_h5ad.R")))
-source(file.path(root, "script", "lib_validate.R"))
+suppressMessages(source(file.path(root, "script", "load.R"), chdir = TRUE))
 
-run_script <- function(script, args) {
-  out <- suppressWarnings(system2(
-    file.path(R.home("bin"), "Rscript"),
-    c(file.path(root, "script", script), args),
-    stdout = TRUE, stderr = TRUE,
-    env = "RENV_CONFIG_NAMESPACES_CHECK=FALSE"
-  ))
-  status <- attr(out, "status")
-  list(ok = is.null(status) || status == 0, log = out)
+run_quietly <- function(expr) {
+  #' Evaluate expr, returning its messages as one string
+  msgs <- character(0)
+  withCallingHandlers(expr, message = function(m) {
+    msgs <<- c(msgs, conditionMessage(m))
+    invokeRestart("muffleMessage")
+  })
+  paste(msgs, collapse = "")
 }
-log_of <- function(res) paste(res$log, collapse = "\n")
 
 GENES <- c("geneA", "geneB", "geneC", "geneD")
 QC <- c("diff.elpd", "diff.elpd.se", "bimodal.on_level", "bimodal.off_level",
@@ -81,11 +75,9 @@ test_that("build from metadata columns, then binarize from per-split files", {
   dir <- withr::local_tempdir()
   toy <- toy_seurat(dir)
 
-  res <- run_script("seurat_to_h5ad.R", c(
-    "--seurat", toy$path, "--dataset", "toy", "--out-dir", dir,
-    "--split-label", "sex", "--split-order", "Male,Female"
-  ))
-  expect_true(res$ok, info = log_of(res))
+  log <- run_quietly(seurat_to_h5ad(toy$path, "toy", out_dir = dir, split_label = "sex",
+                                    split_order = c("Male", "Female")))
+  expect_match(log, "add_probability(", fixed = TRUE)
   clusters <- file.path(dir, "toy.clusters.h5ad")
   cells <- file.path(dir, "toy.cells.h5ad")
 
@@ -93,7 +85,7 @@ test_that("build from metadata columns, then binarize from per-split files", {
   val <- validate_h5ad(clusters, cells, stage = "built")
   expect_length(val$errors, 0)
   val <- validate_h5ad(clusters)
-  expect_match(val$errors, "layers/prob is missing.*add_probability_h5ad.R", all = FALSE)
+  expect_match(val$errors, "layers/prob is missing.*add_probability\\(\\)", all = FALSE)
   expect_error(
     ds_check_config(list(toy = list(clusters = clusters),
                          gone = list(clusters = file.path(dir, "nope.h5ad")))),
@@ -103,18 +95,13 @@ test_that("build from metadata columns, then binarize from per-split files", {
   # cluster names set before binarizing survive it
   names_tsv <- file.path(dir, "names.tsv")
   writeLines(c("cluster_id\tname", "1\tMi4"), names_tsv)
-  res <- run_script("set_cluster_names.R", c("--clusters", clusters, "--names", names_tsv))
-  expect_true(res$ok, info = log_of(res))
+  suppressMessages(set_cluster_names(clusters, names_tsv))
 
   saveRDS(male_prob(), file.path(dir, "male.rds"))
   saveRDS(female_prob(), file.path(dir, "female.rds"))
-  res <- run_script("add_probability_h5ad.R", c(
-    "--clusters", clusters,
-    "--prob", sprintf("Male=%s,Female=%s", file.path(dir, "male.rds"),
-                      file.path(dir, "female.rds"))
-  ))
-  expect_true(res$ok, info = log_of(res))
-  expect_match(log_of(res), "Male 3, Female 2")
+  log <- run_quietly(add_probability(clusters, c(Male = file.path(dir, "male.rds"),
+                                                 Female = file.path(dir, "female.rds"))))
+  expect_match(log, "Male 3, Female 2")
 
   val <- validate_h5ad(clusters, cells)
   expect_length(val$errors, 0)
@@ -124,6 +111,8 @@ test_that("build from metadata columns, then binarize from per-split files", {
   expect_equal(ds$cluster_labels[["1"]], "Mi4 (1)")
   meta <- ds$clusters_h$uns$scmarco
   expect_equal(meta$binarization$method, "mixture model")
+  expect_equal(meta$binarization$source, sprintf("Male=%s,Female=%s", file.path(dir, "male.rds"),
+                                                 file.path(dir, "female.rds")))
   expect_equal(meta$split_label, "sex")
   expect_equal(ds$reductions, "X_umap_full")
   pct <- ds_cluster_layer_long(ds, "pct_pos", "geneA", clusters = "1")
@@ -132,12 +121,14 @@ test_that("build from metadata columns, then binarize from per-split files", {
 
   # binarizing again (named-list RDS) replaces the probabilities
   saveRDS(list(Male = male_prob(), Female = female_prob()), file.path(dir, "both.rds"))
-  res <- run_script("add_probability_h5ad.R", c(
-    "--clusters", clusters, "--prob", file.path(dir, "both.rds")
-  ))
-  expect_true(res$ok, info = log_of(res))
-  expect_match(log_of(res), "replacing them")
+  log <- run_quietly(add_probability(clusters, file.path(dir, "both.rds")))
+  expect_match(log, "replacing them")
   expect_toy_binarized(clusters, cells)
+
+  # in-memory tables work as well as files
+  log <- run_quietly(add_probability(clusters, list(Male = male_prob(), Female = female_prob())))
+  ds <- expect_toy_binarized(clusters, cells)
+  expect_equal(ds$clusters_h$uns$scmarco$binarization$source, "Male=<table>,Female=<table>")
 })
 
 test_that("legacy identities and wide table still build in one step", {
@@ -153,12 +144,14 @@ test_that("legacy identities and wide table still build in one step", {
   wide$exprType <- c("bimodal", "bimodal", "bimodal", "unimodal")
   saveRDS(wide, file.path(dir, "prob.rds"))
 
-  res <- run_script("seurat_to_h5ad.R", c(
-    "--seurat", toy$path, "--prob", file.path(dir, "prob.rds"),
-    "--dataset", "toy", "--out-dir", dir, "--split-order", "Male,Female"
-  ))
-  expect_true(res$ok, info = log_of(res))
-  expect_match(log_of(res), "legacy '<split>@<cluster>' identities")
+  # the wide table has no fit parameters
+  expect_warning(
+    log <- run_quietly(seurat_to_h5ad(toy$path, "toy", out_dir = dir,
+                                      prob = file.path(dir, "prob.rds"),
+                                      split_order = c("Male", "Female"))),
+    "mixture-model plot will be unavailable"
+  )
+  expect_match(log, "legacy '<split>@<cluster>' identities")
   clusters <- file.path(dir, "toy.clusters.h5ad")
   val <- validate_h5ad(clusters)
   expect_length(val$errors, 0)
@@ -169,7 +162,7 @@ test_that("legacy identities and wide table still build in one step", {
   expect_equal(from_cluster(b, "1", "Male", 1), c(geneA = 0L))
 })
 
-# --- Input rules (no Rscript needed) -------------------------------------------
+# --- Input rules ----------------------------------------------------------------
 
 test_that("seurat_labels picks metadata columns, then legacy identities", {
   meta <- data.frame(scmarco_split = c("M", "F"), scmarco_cluster = c(1, 2))
@@ -183,8 +176,8 @@ test_that("seurat_labels picks metadata columns, then legacy identities", {
   expect_error(seurat_labels(meta, c("M@1", "F@2"), cluster_col = "clust",
                              defaults = FALSE), "'clust' not found")
   expect_error(seurat_labels(meta[, "scmarco_cluster", drop = FALSE], c("a", "b")),
-               "--split-col none")
-  one <- seurat_labels(meta, c("a", "b"), split_col = "none", defaults = FALSE)
+               "split_col = NULL")
+  one <- seurat_labels(meta, c("a", "b"), split_col = NULL, defaults = FALSE)
   expect_equal(one$split, c("all", "all"))
 })
 
@@ -287,7 +280,7 @@ test_that("assemble_prob keeps mixture parameters and modeling units", {
   expect_null(p$mixture)
 })
 
-test_that("read_prob_arg records which splits were modeled together", {
+test_that("read_prob records which splits were modeled together", {
   dir <- withr::local_tempdir()
   wide <- data.frame(`M@1` = 1:2 / 4, `F@1` = 3:4 / 4, exprType = "bimodal",
                      check.names = FALSE, row.names = c("g1", "g2"))
@@ -297,17 +290,24 @@ test_that("read_prob_arg records which splits were modeled together", {
   saveRDS(list(A = wide, B = wide), file.path(dir, "list.rds"))
   path <- function(f) file.path(dir, f)
 
-  t <- read_prob_arg(path("wide.rds"))
+  t <- suppressMessages(read_prob(path("wide.rds")))
   expect_equal(attr(t, "models"), c(M = "M+F", F = "M+F"))
-  t <- read_prob_arg(paste0(path("wide.rds"), ",X=", path("one.rds")))
+  t <- suppressMessages(read_prob(c(path("wide.rds"), X = path("one.rds"))))
   expect_equal(names(t), c("M", "F", "X"))
   expect_equal(attr(t, "models"), c(M = "M+F", F = "M+F", X = "X"))
-  t <- read_prob_arg(path("list.rds"))
+  expect_equal(attr(t, "source"), paste0(path("wide.rds"), ",X=", path("one.rds")))
+  t <- read_prob(path("list.rds"))
   expect_equal(attr(t, "models"), c(A = "A", B = "B"))
   # the model's raw character output stays text, so assemble_prob parses it
-  t <- read_prob_arg(path("wide_text.rds"))
+  t <- suppressMessages(read_prob(path("wide_text.rds")))
   expect_true(is.matrix(t$F) && is.character(t$F))
-  expect_error(read_prob_arg("a=b=c.rds"), "must look like")
+  # in-memory: a wide table, or tables mixed with paths
+  t <- suppressMessages(read_prob(wide))
+  expect_equal(attr(t, "models"), c(M = "M+F", F = "M+F"))
+  t <- read_prob(list(A = wide, B = path("one.rds")))
+  expect_equal(attr(t, "source"), paste0("A=<table>,B=", path("one.rds")))
+  expect_error(read_prob(path("nope.rds")), "not found")
+  expect_error(read_prob(list(1:3)), "must hold a named list")
 })
 
 test_that("build from one object per split with different genes and assays", {
@@ -326,31 +326,25 @@ test_that("build from one object per split with different genes and assays", {
     DefaultAssay(part) <- "other"
     saveRDS(part, file.path(dir, paste0(s, ".rds")))
   }
-  build_args <- c(
-    "--seurat", sprintf("Male=%s,Female=%s", file.path(dir, "Male.rds"),
-                        file.path(dir, "Female.rds")),
-    "--cluster-col", "cl", "--assay", "RNA", "--dataset", "toy", "--out-dir", dir
-  )
+  objs <- c(Male = file.path(dir, "Male.rds"), Female = file.path(dir, "Female.rds"))
+  build <- function(...) {
+    seurat_to_h5ad(objs, "toy", out_dir = dir, cluster_col = "cl", assay = "RNA", ...)
+  }
   # A missing reduction is an error, not a silently missing UMAP
-  res <- run_script("seurat_to_h5ad.R", build_args)
-  expect_false(res$ok)
-  expect_match(log_of(res), "Male: no reduction named 'umap'. Reductions on the object: none", fixed = TRUE)
-  res <- run_script("seurat_to_h5ad.R", c(build_args, "--reduction", "none"))
-  expect_true(res$ok, info = log_of(res))
+  expect_error(suppressMessages(build()),
+               "Male: no reduction named 'umap'. Reductions on the object: none", fixed = TRUE)
+  suppressMessages(build(reduction = NULL))
   clusters <- file.path(dir, "toy.clusters.h5ad")
   cells <- file.path(dir, "toy.cells.h5ad")
   val <- validate_h5ad(clusters, cells, stage = "built")
   expect_length(val$errors, 0)
 
-  saveRDS(male_prob(), file.path(dir, "male.rds"))
-  saveRDS(female_prob()[1:3, ], file.path(dir, "female.rds"))
-  res <- run_script("add_probability_h5ad.R", c(
-    "--clusters", clusters,
-    "--prob", sprintf("Male=%s,Female=%s", file.path(dir, "male.rds"),
-                      file.path(dir, "female.rds"))
-  ))
-  expect_true(res$ok, info = log_of(res))
-  # splits keep the --seurat order
+  saveRDS(male_prob(), file.path(dir, "male_prob.rds"))
+  saveRDS(female_prob()[1:3, ], file.path(dir, "female_prob.rds"))
+  suppressWarnings(suppressMessages(add_probability(
+    clusters, c(Male = file.path(dir, "male_prob.rds"), Female = file.path(dir, "female_prob.rds"))
+  )))
+  # splits keep the order of `seurat`
   ds <- expect_toy_binarized(clusters, cells)
   expect_equal(ds$all_genes, GENES)
 
@@ -365,11 +359,15 @@ test_that("build from one object per split with different genes and assays", {
   expect_equal(mean_a$value[mean_a$split == "Female"],
                mean(log1p(fem["geneA", ] / colSums(fem) * 1e4)), tolerance = 1e-6)
 
-  expect_error(parse_seurat_arg("A=x.rds,A=y.rds"), "given twice")
-  res <- run_script("seurat_to_h5ad.R", c(
-    "--seurat", sprintf("Male=%s", file.path(dir, "Male.rds")),
-    "--split-col", "x", "--dataset", "toy2", "--out-dir", dir
-  ))
-  expect_false(res$ok)
-  expect_match(log_of(res), "--split-col cannot be used")
+  expect_error(seurat_inputs(c(A = "x.rds", A = "y.rds")), "given twice")
+  expect_error(seurat_inputs(c("x.rds", "y.rds")), "named by split")
+  expect_error(seurat_to_h5ad(objs["Male"], "toy2", out_dir = dir, split_col = "x"),
+               "split_col cannot be used")
+
+  # in-memory objects build the same dataset
+  mem <- lapply(objs, readRDS)
+  suppressMessages(seurat_to_h5ad(mem, "toy_mem", out_dir = dir, cluster_col = "cl",
+                                  assay = "RNA", reduction = NULL))
+  expect_equal(h5ad_layer(h5ad_open(file.path(dir, "toy_mem.clusters.h5ad")), "pct_pos"),
+               h5ad_layer(h5ad_open(file.path(dir, "toy.clusters.h5ad")), "pct_pos"))
 })

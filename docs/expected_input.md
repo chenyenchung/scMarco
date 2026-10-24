@@ -1,11 +1,21 @@
 # Expected input
 
-This spec covers building a new scMarco dataset. There are two steps:
+This spec covers building a new scMarco dataset. There are two steps, both R
+functions in `script/lib_build.R`, loaded with
+`source("script/load.R", chdir = TRUE)`:
 
-1. **Build** (`script/seurat_to_h5ad.R`): a Seurat object →
+1. **Build** (`seurat_to_h5ad()`): a Seurat object →
    `<id>.clusters.h5ad` (no probabilities yet) + `<id>.cells.h5ad`.
-2. **Binarize** (`script/add_probability_h5ad.R`): mixture-model output →
+2. **Binarize** (`add_probability()`): mixture-model output →
    `layers/prob` and the bimodality flags in `<id>.clusters.h5ad`.
+
+```r
+seurat_to_h5ad("obj.rds", "dmel_mixed", split_label = "sex")
+add_probability("data/dmel_mixed.clusters.h5ad",
+                c(Male = "male_prob.rds", Female = "female_prob.rds"))
+```
+
+Both take paths or objects already in memory.
 
 The app **only accepts binarized datasets**. If any configured dataset has no
 `layers/prob`, the app stops at startup, lists the offending datasets and names
@@ -18,23 +28,23 @@ scripts and produces binarized files directly; see the README.
 
 ## 1. Seurat object (build step)
 
-A single `.rds` file readable by `readRDS()` holding a Seurat v4 or v5
-object. Only the SeuratObject package is needed; full Seurat isn't required.
+A Seurat v4 or v5 object, or an `.rds` file readable by `readRDS()` holding
+one. Only the SeuratObject package is needed; full Seurat isn't required.
 Seurat v3 objects saved before SeuratObject existed (e.g. the Ozel et al. 2021
 submission objects) are updated for SeuratObject on read.
 
 When each split was saved as its own object (e.g. one per stage), pass them
-all as `--seurat P15=P15.rds,P30=P30.rds,...`: the split is the name, and
-`--split-col` is not used. The genes are the union of the objects' genes; a
+all, named by split: `seurat = c(P15 = "P15.rds", P30 = "P30.rds", ...)` (or a
+named list of objects). The split is the name, and `split_col` is not used. The genes are the union of the objects' genes; a
 gene missing from an object counts as 0 in its cells. Splits keep the order
-given unless `--split-order` says otherwise. An object's `umap` reduction is
+given unless `split_order` says otherwise. An object's `umap` reduction is
 stored as `obsm/X_<split>`.
 
 ### Expression
 
 | Requirement | Details |
 |---|---|
-| Assay | The default assay (usually `RNA`); another with `--assay`, e.g. `--assay RNA` when the default is `integrated`. |
+| Assay | The default assay (usually `RNA`); another with `assay`, e.g. `assay = "RNA"` when the default is `integrated`. |
 | Counts | **Raw counts**: non-negative integers, genes × cells. In v5, the `counts` layer (split layers must be joined with `JoinLayers()` first); in v4, the `counts` slot. |
 | Normalization | Done by the builder, as Seurat's LogNormalize: `log1p(counts / library size × 1e4)`. Any `data` layer already present is ignored. |
 | Genes | Unique, non-empty names; the builder sorts them. They must use the same symbols as the mixture-model output. |
@@ -49,10 +59,10 @@ named.
 
 | Source | How |
 |---|---|
-| Preferred | Metadata columns `scmarco_split` and `scmarco_cluster`; other names with `--split-col` / `--cluster-col`. `--split-col none` puts every cell in one split named `all`. A column named with either option must exist. |
+| Preferred | Metadata columns `scmarco_split` and `scmarco_cluster`; other names with `split_col` / `cluster_col`. `split_col = NULL` puts every cell in one split named `all`. A column named with either argument must exist. |
 | Fallback (legacy) | `Idents(obj)` of the form `<split>@<cluster>`, exactly one `@`. Used only when neither default column exists and neither option is given. |
 
-`--exclude-clusters 0` drops the cells of the listed cluster IDs before
+`exclude_clusters = "0"` drops the cells of the listed cluster IDs before
 anything else, e.g. cells the study discarded but kept in the object.
 
 Name rules, checked with actionable errors (`check_labels()` in `script/lib_import.R`;
@@ -77,9 +87,9 @@ cluster_id	name
 154	Mi4
 ```
 
-```sh
-Rscript script/set_cluster_names.R --clusters data/<id>.clusters.h5ad --names names.tsv
-Rscript script/set_cluster_names.R --clusters data/<id>.clusters.h5ad --export names.tsv
+```r
+set_cluster_names("data/<id>.clusters.h5ad", "names.tsv")  # or a data.frame, or c(`151` = "T4b")
+get_cluster_names("data/<id>.clusters.h5ad", "names.tsv")  # current names (and the table)
 ```
 
 Listed clusters get the given name; an empty name clears it; unlisted clusters
@@ -96,31 +106,30 @@ Dm4	4	Dm4
 G_PsCrtrg	1+2	PCG
 ```
 
-```sh
-Rscript script/set_cluster_names.R --clusters data/<id>.clusters.h5ad \
-  --cells data/<id>.cells.h5ad --ids ids.tsv
+```r
+set_cluster_ids("data/<id>.clusters.h5ad", "ids.tsv", cells = "data/<id>.cells.h5ad")
 ```
 
 ### Split order
 
-| Option | Meaning |
+| Argument | Meaning |
 |---|---|
-| `--split-order Mel,Yak,San,Tei` | Display order; must list every split exactly once. Defaults to alphabetical. |
-| `--ordered TRUE` | The splits are a sequence (stages). This enables the expression-trend plot. |
-| `--split-label stage` | Word used in the UI ("Must be ON in these stages"). |
+| `split_order = c("Mel", "Yak", "San", "Tei")` | Display order; must list every split exactly once. Defaults to alphabetical. |
+| `ordered = TRUE` | The splits are a sequence (stages). This enables the expression-trend plot. |
+| `split_label = "stage"` | Word used in the UI ("Must be ON in these stages"). |
 
 ### Reductions (optional)
 
 | Source | Stored as |
 |---|---|
 | A reduction named `umap` on the object (all cells) | `obsm/X_umap_full`, shown as "All cells" |
-| `--umaps <folder>`: one `.rds` Seurat object per subset, each with a `umap` reduction | `obsm/X_<name>`, where `<name>` is the file name before the first `_` (e.g. `ANm_umap.rds` → `X_ANm`) |
+| `umaps = "<folder>"`: one `.rds` Seurat object per subset, each with a `umap` reduction | `obsm/X_<name>`, where `<name>` is the file name before the first `_` (e.g. `ANm_umap.rds` → `X_ANm`) |
 
-`--reduction tsne` stores that reduction instead of `umap`, as
+`reduction = "tsne"` stores that reduction instead of `umap`, as
 `obsm/X_tsne_full` (one object) or `obsm/X_<split>_tsne` (one object per
 split); the plots label its axes tSNE. The build stops if an object lacks the
 named reduction and lists the reductions it has (e.g. `umap.rna` or
-`wnn.umap`); pass that name to `--reduction`, or `--reduction none` to
+`wnn.umap`); pass that name as `reduction`, or `reduction = NULL` to
 build without one.
 
 Reductions named after a split (`X_<split>` or `X_<split>_<reduction>`) are
@@ -167,14 +176,16 @@ contain any character the build step allows.
 
 Pass the tables in either of two ways:
 
-```sh
+```r
 # one file per split
-Rscript script/add_probability_h5ad.R --clusters data/<id>.clusters.h5ad \
-  --prob Male=male_prob.rds,Female=female_prob.rds
+add_probability("data/<id>.clusters.h5ad",
+                c(Male = "male_prob.rds", Female = "female_prob.rds"))
 
 # one .rds holding a named list: list(Male = male_df, Female = female_df)
-Rscript script/add_probability_h5ad.R --clusters data/<id>.clusters.h5ad \
-  --prob prob_by_split.rds
+add_probability("data/<id>.clusters.h5ad", "prob_by_split.rds")
+
+# tables already in memory
+add_probability("data/<id>.clusters.h5ad", list(Male = male_df, Female = female_df))
 ```
 
 The split names must match the build step. Per-split bimodality is stored in
@@ -188,14 +199,14 @@ Mixture model tab draws them: the distribution of cluster averages with the two
 fitted Gaussians, and the P(On) curve with the clusters of interest marked. If
 any table lacks them, a warning is given and the tab is hidden.
 
-The `--prob` input also tells which splits were **modeled together**, recorded
+The `prob` argument also tells which splits were **modeled together**, recorded
 in `uns/scmarco/mixture_models` (one model name per split, in `bimodal_splits`
-order). Each `Split=file.rds` item and each element of a named list is its own
-model; a wide table (2b) is one model across all its splits. Items can be mixed,
-e.g. `--prob mel_yak_wide.rds,San=san.rds` (Mel and Yak modeled together, San
+order). Each named item (`Male = "male.rds"`) and each element of a named list held
+in an unnamed `.rds` is its own model; a wide table (2b) is one model across all its splits. Items can be mixed,
+e.g. `prob = c("mel_yak_wide.rds", San = "san.rds")` (Mel and Yak modeled together, San
 alone). For a joint model the Mixture model tab pools the clusters of all its
 splits, counting each split × cluster pair once. Datasets
-binarized before this was added get the tab once `add_probability_h5ad.R` is
+binarized before this was added get the tab once `add_probability()` is
 run again.
 
 ### 2b. Legacy wide RDS (accepted)
@@ -239,7 +250,7 @@ The output is described fully in the README ("Data format"). In short:
 | State | Has `layers/prob` | `uns/scmarco/binarization` | Validator | App |
 |---|---|---|---|---|
 | *built* | no | absent | `validate_h5ad(stage = "built")` passes | **refuses to start** |
-| *binarized* | yes | `method`, `source` (the `--prob` value), `date` | `validate_h5ad()` passes | loads |
+| *binarized* | yes | `method`, `source` (the `prob` files, `<table>` for one passed in memory), `date` | `validate_h5ad()` passes | loads |
 
 Migrated legacy datasets are binarized from the start. Their `uns/scmarco/source`
 records where they came from, e.g. `sqlite:db.sqlite:ozel_2021_new`.
