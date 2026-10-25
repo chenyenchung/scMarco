@@ -95,6 +95,10 @@ onoff_plot <- function(ds, b, genes, idents, show_pct = FALSE) {
   p
 }
 
+# Rendered at up to 2x for HiDPI screens and downloads; png devices fail
+# ("unable to start device png") well before 2 * this
+ONOFF_MAX_HEIGHT <- 12000
+
 onoff_size <- function(n_genes, n_clusters, show_pct = FALSE) {
   rows <- max(1, ceiling(n_clusters / 3))
   per_gene <- if (show_pct) 100 else 80
@@ -102,6 +106,13 @@ onoff_size <- function(n_genes, n_clusters, show_pct = FALSE) {
     width = min(n_clusters, 3) * 400 + 200,
     height = max(per_gene * n_genes * rows + 150, 500)
   )
+}
+
+onoff_max_genes <- function(n_clusters, show_pct = FALSE) {
+  #' Most genes onoff_size() fits within ONOFF_MAX_HEIGHT
+  rows <- max(1, ceiling(n_clusters / 3))
+  per_gene <- if (show_pct) 100 else 80
+  max(1, floor((ONOFF_MAX_HEIGHT - 150) / (per_gene * rows)))
 }
 
 # ---------------------------------------------------------------------------

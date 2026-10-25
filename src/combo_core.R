@@ -214,6 +214,20 @@ top_per_cluster <- function(tbl, n) {
   tbl[keep, , drop = FALSE]
 }
 
+top_per_cluster_capped <- function(tbl, n, max_genes) {
+  #' Like top_per_cluster(), but lowers n until at most `max_genes` distinct
+  #' genes are kept. Never goes below one gene per cluster, so every cluster
+  #' with a hit stays represented even if that exceeds `max_genes`.
+  #' Returns list(shown, n) with the n actually used.
+  n <- max(1L, as.integer(n))
+  repeat {
+    shown <- top_per_cluster(tbl, n)
+    if (n == 1L || length(unique(shown$gene)) <= max_genes) break
+    n <- n - 1L
+  }
+  list(shown = shown, n = n)
+}
+
 empty_pairs <- function() {
   data.frame(gene1 = character(0), gene2 = character(0),
              offtargets = integer(0), single_offtargets = integer(0))

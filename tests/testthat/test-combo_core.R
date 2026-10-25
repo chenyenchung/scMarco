@@ -90,6 +90,24 @@ test_that("distinct_within returns genes unique to one selected cluster", {
   expect_error(distinct_within(b, "A", character(0), 1))
 })
 
+test_that("top_per_cluster_capped trims but keeps every cluster", {
+  tbl <- data.frame(
+    cluster = rep(c("A", "B", "C"), each = 4),
+    gene = paste0("g", 1:12),
+    offtargets = 0L
+  )
+  res <- top_per_cluster_capped(tbl, 4, 12)
+  expect_equal(res$n, 4L)
+  expect_equal(nrow(res$shown), 12)
+  res <- top_per_cluster_capped(tbl, 4, 7)
+  expect_equal(res$n, 2L)
+  expect_equal(res$shown$gene, c("g1", "g2", "g5", "g6", "g9", "g10"))
+  # one per cluster even when that exceeds the cap
+  res <- top_per_cluster_capped(tbl, 4, 1)
+  expect_equal(res$n, 1L)
+  expect_setequal(res$shown$cluster, c("A", "B", "C"))
+})
+
 test_that("pair_offtargets counts clusters where both genes are ON", {
   b <- toy()
   res <- pair_offtargets(b, "A", character(0), 1)

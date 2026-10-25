@@ -68,24 +68,49 @@ find_distinct_server <- function(id, ctx, coexp_session) {
           )
           if (!ok) return(NULL)
           n_show <- max(1, as.integer(input$n_show), na.rm = TRUE)
-          list(tbl = tbl, shown = top_per_cluster(tbl, n_show),
+          list(tbl = tbl, n_show = n_show,
                idents = idents, b = b, ds = ctx$ds(), first = ctx$first_mark())
         }
       )
+
+      # Trimmed so the plot stays drawable; depends on show_pct because the
+      # % labels make each row taller
+      shown <- reactive({
+        res <- found()
+        if (is.null(res)) return(NULL)
+        top_per_cluster_capped(
+          res$tbl, res$n_show,
+          onoff_max_genes(length(res$idents), show_pct())
+        )
+      })
+
+      observeEvent(shown(), {
+        s <- shown()
+        n_show <- found()$n_show
+        if (s$n < n_show) {
+          showNotification(
+            sprintf(paste(
+              "Too many genes to plot: showing %d instead of %d per cluster.",
+              "The table below lists every hit."
+            ), s$n, n_show),
+            type = "warning", duration = 10
+          )
+        }
+      })
 
       onplot <- reactive({
         res <- found()
         if (is.null(res)) {
           return(message_plot("Select clusters and click 'Find genes'."))
         }
-        onoff_plot(res$ds, res$b, unique(res$shown$gene), res$idents,
+        onoff_plot(res$ds, res$b, unique(shown()$shown$gene), res$idents,
                    show_pct = show_pct())
       })
 
       plot_dims <- reactive({
         res <- found()
         if (is.null(res)) return(c(width = 800, height = 400))
-        onoff_size(length(unique(res$shown$gene)), length(res$idents), show_pct())
+        onoff_size(length(unique(shown()$shown$gene)), length(res$idents), show_pct())
       })
 
       output$onplot <- renderPlot(
@@ -141,7 +166,7 @@ find_distinct_server <- function(id, ctx, coexp_session) {
         input$select, {
           res <- found()
           if (is.null(res)) return()
-          hits <- unique(res$shown$gene)
+          hits <- unique(shown()$shown$gene)
           if (length(res$first) == 0) {
             showModal(modalDialog(
               title = "Select genes to examine:",
