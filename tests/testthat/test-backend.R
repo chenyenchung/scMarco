@@ -33,6 +33,26 @@ test_that("config overrides win over uns", {
   expect_equal(ds$splits[1], "Adult")
 })
 
+test_that("the trend view defaults to line for ordered splits and follows the config", {
+  ds <- ds_load("example", list(label = "Example", clusters = fixture))
+  expect_equal(ds$trend, "line")
+  ds <- ds_load("example_unordered", list(label = "Example", clusters = fixture,
+                                          ordered_splits = FALSE))
+  expect_null(ds$trend)
+  ds <- ds_load("example_both", list(label = "Example", clusters = fixture,
+                                     ordered_splits = FALSE, trend = "both"))
+  expect_equal(ds$trend, "both")
+})
+
+test_that("the config check rejects trend views the files cannot back", {
+  expect_silent(ds_check_config(list(a = list(clusters = fixture, trend = "line"))))
+  expect_error(ds_check_config(list(a = list(clusters = fixture, trend = "lines"))),
+               "trend must be one of")
+  # The fixture has no cells file
+  expect_error(ds_check_config(list(a = list(clusters = fixture, trend = "box"))),
+               "needs a cells file")
+})
+
 make_pair <- function(dir) {
   genes <- c("a", "b", "c")
   splits <- c("F", "M")

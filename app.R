@@ -241,7 +241,7 @@ server <- function(input, output, session) {
   observeEvent(ds(), {
     first_mark(character(0))
 
-    has_trend <- ds()$has_mean && ds()$ordered_splits
+    has_trend <- !is.null(ds()$trend)
     has_umap <- length(ds()$reductions) > 0
     has_mixture <- ds()$has_mixture
     for (tab in list(

@@ -272,6 +272,18 @@ meta_active <- function(filters) {
 
 .ds_cache <- new.env(parent = emptyenv())
 
+# Expression trend views a config may ask for: cluster averages across splits
+# (line, needs mean_lognorm), per-cell distributions (box, needs the cells
+# file), or both in one panel
+TREND_MODES <- c("line", "box", "both")
+
+trend_mode <- function(entry, ordered_splits, has_mean) {
+  #' The trend view the config asks for; without one, ordered splits with
+  #' cluster averages get the line plot. NULL: no trend view.
+  if (!is.null(entry$trend)) return(entry$trend)
+  if (ordered_splits && has_mean) "line"
+}
+
 ds_check_config <- function(datasets) {
   #' Check every configured dataset before loading any, and stop with one
   #' message that lists each problem and its fix.
@@ -298,6 +310,28 @@ ds_check_config <- function(datasets) {
       }
       if (anyDuplicated(levels)) {
         problems <- c(problems, sprintf("- %s: subset_by lists a level more than once", id))
+      }
+      trend <- datasets[[id]]$trend
+      if (!is.null(trend)) {
+        if (!(length(trend) == 1 && trend %in% TREND_MODES)) {
+          problems <- c(problems, sprintf(
+            "- %s: trend must be one of %s", id, paste(TREND_MODES, collapse = ", ")
+          ))
+        } else {
+          if (trend %in% c("line", "both") && !h5ad_exists(path, "layers/mean_lognorm")) {
+            problems <- c(problems, sprintf(
+              "- %s: trend: %s needs layers/mean_lognorm, which %s does not have; use trend: box",
+              id, trend, path
+            ))
+          }
+          cells <- datasets[[id]]$cells
+          if (trend %in% c("box", "both") && (is.null(cells) || !file.exists(cells))) {
+            problems <- c(problems, sprintf(
+              "- %s: trend: %s needs a cells file, but cells is %s",
+              id, trend, if (is.null(cells)) "not set" else paste("not found:", cells)
+            ))
+          }
+        }
       }
     }
   }
@@ -367,6 +401,8 @@ ds_load <- function(id, entry) {
   }
 
   pick <- function(x, default) if (is.null(x)) default else x
+  ordered_splits <- isTRUE(pick(entry$ordered_splits, meta$ordered_splits))
+  has_mean <- "mean_lognorm" %in% ch$layers
   ds <- list(
     id = id,
     label = entry$label,
@@ -389,9 +425,10 @@ ds_load <- function(id, entry) {
     analysis_genes = analysis_genes,
     unimodal_genes = setdiff(ch$genes, analysis_genes),
     split_label = pick(entry$split_label, pick(meta$split_label, "split")),
-    ordered_splits = isTRUE(pick(entry$ordered_splits, meta$ordered_splits)),
+    ordered_splits = ordered_splits,
     has_pct = "pct_pos" %in% ch$layers,
-    has_mean = "mean_lognorm" %in% ch$layers,
+    has_mean = has_mean,
+    trend = trend_mode(entry, ordered_splits, has_mean),
     has_mixture = !is.null(mixture),
     reductions = if (is.null(cells)) character(0) else cells$obsm,
     binarized = new.env(parent = emptyenv())

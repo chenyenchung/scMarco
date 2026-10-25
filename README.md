@@ -42,6 +42,8 @@ datasets:
     split_order: [...]       # optional overrides of the file's uns/scmarco
     split_label: stage
     ordered_splits: true
+    trend: line              # optional: line (needs mean_lognorm), box (needs
+                             # cells) or both; default line for ordered splits
     subset_by: [class, subclass]  # optional: obs/meta_<level> columns users can
                                   # subset clusters by, coarse to fine
 gene_list:

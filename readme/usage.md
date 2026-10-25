@@ -18,7 +18,7 @@ the dataset expresses it.
 Binarization greatly reduces complexity, but expression is a spectrum and some
 clusters are hard to call ON or OFF. Where the dataset provides them, also check
 the log-normalized values: **Plot expression trend** for datasets with ordered
-stages, and **UMAP** for datasets with cell-level data. **Mixture model** shows
+stages (and others that enable it), and **UMAP** for datasets with cell-level data. **Mixture model** shows
 why a gene was called ON or OFF in a cluster.
 
 ### Shared options
@@ -112,9 +112,17 @@ the **Co-expressed** panel is the share of cells that express **all** the genes.
 
 ### Plot expression trend
 
-An interactive line plot of cluster-average log-normalized expression across
-ordered stages. Hover over a line to see its cluster. Clusters of interest are
-highlighted, and get distinct colors in the downloaded static version.
+Depending on the dataset, a line plot, box plots, or both in one panel.
+
+The interactive line plot shows cluster-average log-normalized expression
+across stages, sexes or species. Hover over a line to see its cluster. Clusters
+of interest are highlighted, and get distinct colors in the downloaded static
+version.
+
+The box plots show the log-normalized expression of each cell in each stage,
+sex or species: one panel per cluster of interest, or every cell pooled when no
+cluster is selected. Where both are shown, the lines are drawn over boxes of
+every cell in each stage, sex or species.
 
 ### UMAP
 

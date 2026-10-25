@@ -231,11 +231,59 @@ coexp_size <- function(p, n_genes, show_pct = FALSE) {
 }
 
 # ---------------------------------------------------------------------------
-# Expression trend (ordered splits only)
+# Expression trend
 # ---------------------------------------------------------------------------
 
+box_stats <- function(ds, gene, highlight = character(0)) {
+  #' Tukey box statistics of per-cell log-normalized expression per split:
+  #' one panel per highlighted cluster, or every cell pooled when none is
+  #' highlighted. Precomputed so interactive plots don't ship every cell.
+  obs <- ds_cells_obs(ds)
+  df <- data.frame(
+    cluster = as.character(obs$cluster),
+    split = as.character(obs$split),
+    value = ds_cell_expression(ds, gene)
+  )
+  df <- df[df$split %in% ds$splits, , drop = FALSE]
+  if (length(highlight) > 0) {
+    df <- df[df$cluster %in% highlight, , drop = FALSE]
+    df$panel <- cluster_label(ds, df$cluster)
+    panels <- cluster_label(ds, highlight)
+  } else {
+    df$panel <- panels <- "All clusters"
+  }
+  if (nrow(df) == 0) return(NULL)
+  stats <- lapply(split(df, list(df$panel, df$split), drop = TRUE), function(d) {
+    q <- quantile(d$value, c(0.25, 0.5, 0.75), names = FALSE)
+    reach <- 1.5 * (q[3] - q[1])
+    data.frame(
+      panel = d$panel[1], split = d$split[1], n = nrow(d),
+      ymin = min(d$value[d$value >= q[1] - reach]),
+      lower = q[1], middle = q[2], upper = q[3],
+      ymax = max(d$value[d$value <= q[3] + reach])
+    )
+  })
+  out <- do.call(rbind, stats)
+  out$panel <- factor(out$panel, levels = panels)
+  out$split <- factor(out$split, levels = ds$splits)
+  rownames(out) <- NULL
+  out
+}
+
+box_layers <- function(stats, fill = "#CCCCCC") {
+  #' Whiskers plus a box with its median line, from box_stats(); drawn as
+  #' range + crossbar so plotly renders them as given
+  list(
+    geom_linerange(data = stats, aes(x = split, ymin = ymin, ymax = ymax),
+                   inherit.aes = FALSE, color = "#555555"),
+    geom_crossbar(data = stats, aes(x = split, y = middle, ymin = lower, ymax = upper),
+                  inherit.aes = FALSE, fill = fill, color = "#555555", width = 0.5)
+  )
+}
+
 trend_plot <- function(ds, gene, highlight = character(0), lowlight_alpha = 0.2,
-                       interactive = TRUE) {
+                       interactive = TRUE, box = FALSE) {
+  #' box: draw the per-split box plot of all cells behind the lines
   df <- ds_cluster_layer_long(ds, "mean_lognorm", gene)
   df <- df[!is.na(df$value), , drop = FALSE]
   if (nrow(df) == 0) return(message_plot("Gene not found."))
@@ -244,9 +292,11 @@ trend_plot <- function(ds, gene, highlight = character(0), lowlight_alpha = 0.2,
   df$cluster_label <- cluster_label(ds, df$cluster)
   highlight <- cluster_label(ds, highlight)
   df <- df[order(df$highlight), ]
+  back <- if (box) box_layers(box_stats(ds, gene), fill = "#EEEEEE")
 
   if (interactive) {
     p <- ggplot(df, aes(x = split, y = value, group = cluster, text = cluster_label)) +
+      back +
       geom_line(aes(color = highlight, alpha = highlight)) +
       scale_color_manual(values = c(`FALSE` = "#333333", `TRUE` = "#C0392B"),
                          guide = "none") +
@@ -262,12 +312,40 @@ trend_plot <- function(ds, gene, highlight = character(0), lowlight_alpha = 0.2,
   colors <- c(viridisLite::viridis(length(highlight)), "#333333")
   names(colors) <- c(highlight, "Others")
   ggplot(df, aes(x = split, y = value, group = cluster)) +
+    back +
     geom_line(aes(color = label, alpha = highlight)) +
     scale_color_manual(values = colors, name = NULL) +
     scale_alpha_manual(values = c(`FALSE` = lowlight_alpha, `TRUE` = 1),
                        guide = "none") +
-    labs(x = NULL, y = "Log-normalized expression", title = gene) +
+    labs(x = NULL, y = "Log-normalized expression", title = gene,
+         subtitle = if (box) "Boxes: every cell; lines: cluster averages") +
     cowplot::theme_cowplot()
+}
+
+box_plot <- function(ds, gene, highlight = character(0), interactive = TRUE) {
+  #' Per-cell log-normalized expression in each split: one panel per
+  #' highlighted cluster, or every cell pooled when none is highlighted
+  if (!gene %in% ds$all_genes) return(message_plot("Gene not found."))
+  stats <- box_stats(ds, gene, highlight)
+  if (is.null(stats)) return(message_plot("No cells in the selected clusters."))
+
+  p <- ggplot(stats) +
+    box_layers(stats) +
+    facet_wrap(~panel, ncol = min(nlevels(stats$panel), 3)) +
+    scale_x_discrete(drop = FALSE) +
+    labs(x = NULL, y = "Log-normalized expression", title = gene) +
+    cowplot::theme_cowplot() +
+    theme(strip.background = element_rect(color = "black", fill = "white"),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+  if (interactive) return(plotly::ggplotly(p))
+  p
+}
+
+box_size <- function(n_panels) {
+  #' Pixels for a box plot with this many panels (3 per row)
+  n_panels <- max(n_panels, 1)
+  c(width = min(n_panels, 3) * 500 + 200,
+    height = ceiling(n_panels / 3) * 450 + 150)
 }
 
 # ---------------------------------------------------------------------------

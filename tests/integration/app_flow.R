@@ -119,7 +119,7 @@ for (ds_id in intersect(names(config$datasets), strsplit(Sys.getenv("ONLY", past
         }
       }
 
-      if (ds_obj$has_mean && ds_obj$ordered_splits) {
+      if (!is.null(ds_obj$trend)) {
         session$setInputs(`lplot-gene_of_interest` = pick$gene,
                           `lplot-line_alpha` = 0.2, `lplot-do_lineplot` = 1)
         render_ok(output$`lplot-lineplot`)

@@ -26,10 +26,12 @@ datasets:
     label: "dsx neurons: male and female melanogaster"
     clusters: data/dmel_mixed.clusters.h5ad
     cells: data/dmel_mixed.cells.h5ad
+    trend: box
   four_species:
     label: "dsx neurons: four species"
     clusters: data/four_species.clusters.h5ad
     cells: data/four_species.cells.h5ad
+    trend: box
     split_order: ["Mel", "Yak", "San", "Tei"]
 
 gene_list:
