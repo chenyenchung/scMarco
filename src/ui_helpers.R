@@ -22,13 +22,25 @@ with_spinner <- function(text, expr) {
   })
 }
 
-describe_splits <- function(required, min_n, split_label) {
+describe_splits <- function(required, min_n, split_label, scope = NULL) {
   req <- if (length(required) == 0) {
     ""
   } else {
     paste0(" ON in ", paste(required, collapse = " + "), " and")
   }
-  sprintf("Criteria:%s ON in at least %d %s(s).", req, min_n, split_label)
+  paste(c(sprintf("Criteria:%s ON in at least %d %s(s).", req, min_n, split_label),
+          scope), collapse = " ")
+}
+
+describe_scope <- function(ds, filters) {
+  #' "Searching within class = neuron > subclass = Mi, Tm (42 of 210
+  #' clusters)." or NULL when the search covers every cluster
+  active <- meta_active(filters)
+  if (length(active) == 0) return(NULL)
+  what <- paste(names(active), "=", vapply(active, paste, "", collapse = ", "),
+                collapse = " > ")
+  sprintf("Searching within %s (%d of %d clusters).", what,
+          length(meta_universe(ds, filters)), length(ds$clusters))
 }
 
 value_of <- function(x) {

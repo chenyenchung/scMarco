@@ -175,22 +175,28 @@ h5ad_x_gene <- function(h, gene) {
 # obs/cluster_name holds an annotation (missing while unnamed). The app shows
 # "name (id)", or the bare ID, but always works on IDs.
 
-read_cluster_names <- function(obs, clusters, path = "") {
-  #' Named character vector id -> name (NA when unnamed) from obs/cluster_name
+read_cluster_column <- function(obs, col, clusters, path = "") {
+  #' Named character vector id -> value (NA when missing) of a per-cluster obs
+  #' column, which must be the same in every split of a cluster
   out <- setNames(rep(NA_character_, length(clusters)), clusters)
-  if (!"cluster_name" %in% names(obs)) return(out)
-  name <- trimws(as.character(obs$cluster_name))
-  name[!is.na(name) & name == ""] <- NA
+  if (!col %in% names(obs)) return(out)
+  value <- trimws(as.character(obs[[col]]))
+  value[!is.na(value) & value == ""] <- NA
   id <- as.character(obs$cluster)
-  per_id <- tapply(name, id, function(v) unique(v[!is.na(v)]), simplify = FALSE)
+  per_id <- tapply(value, id, function(v) unique(v[!is.na(v)]), simplify = FALSE)
   conflict <- names(per_id)[lengths(per_id) > 1]
   if (length(conflict) > 0) {
-    stop(path, ": obs/cluster_name differs between splits for cluster(s) ",
+    stop(path, ": obs/", col, " differs between splits for cluster(s) ",
          paste(head(conflict, 5), collapse = ", "))
   }
-  named <- names(per_id)[lengths(per_id) == 1]
-  out[named] <- unlist(per_id[named])
+  known <- intersect(names(per_id)[lengths(per_id) == 1], clusters)
+  out[known] <- unlist(per_id[known])
   out
+}
+
+read_cluster_names <- function(obs, clusters, path = "") {
+  #' Named character vector id -> name (NA when unnamed) from obs/cluster_name
+  read_cluster_column(obs, "cluster_name", clusters, path)
 }
 
 format_cluster_labels <- function(ids, names) {
@@ -206,6 +212,62 @@ cluster_label <- function(ds, ids) {
 cluster_choices <- function(ds, ids = ds$clusters) {
   #' Choices for Shiny inputs: labels shown, IDs returned
   setNames(as.character(ids), cluster_label(ds, ids))
+}
+
+# ---------------------------------------------------------------------------
+# Cluster metadata
+# ---------------------------------------------------------------------------
+#
+# Optional obs columns meta_<level>, one value per cluster (the same in every
+# split; missing = unassigned). The config's subset_by lists the levels the app
+# offers as filters, coarse to fine (e.g. class, subclass): a cascade that
+# limits every search to a subset of clusters.
+
+META_PREFIX <- "meta_"
+
+read_cluster_meta <- function(obs, clusters, path = "", levels = NULL) {
+  #' data.frame, one row per cluster ID and one column per level (`levels`
+  #' order, default every level in obs order), or NULL when there is none
+  cols <- names(obs)[startsWith(names(obs), META_PREFIX)]
+  if (!is.null(levels)) cols <- paste0(META_PREFIX, unlist(levels))
+  if (length(cols) == 0) return(NULL)
+  out <- lapply(cols, function(col) unname(read_cluster_column(obs, col, clusters, path)))
+  out <- as.data.frame(setNames(out, substring(cols, nchar(META_PREFIX) + 1)),
+                       optional = TRUE, stringsAsFactors = FALSE)
+  rownames(out) <- clusters
+  out
+}
+
+meta_match <- function(ds, filters, levels = names(ds$cluster_meta)) {
+  #' Logical per cluster: matches every non-empty filter among `levels`
+  keep <- rep(TRUE, length(ds$clusters))
+  for (level in intersect(levels, names(filters))) {
+    chosen <- filters[[level]]
+    if (length(chosen) == 0) next
+    keep <- keep & ds$cluster_meta[[level]] %in% chosen
+  }
+  keep
+}
+
+meta_universe <- function(ds, filters) {
+  #' Cluster IDs inside the search scope: those matching every level with a
+  #' selection (unassigned never matches). All clusters without metadata or
+  #' filters.
+  if (is.null(ds$cluster_meta)) return(ds$clusters)
+  ds$clusters[meta_match(ds, filters)]
+}
+
+meta_level_choices <- function(ds, filters, level) {
+  #' Values of `level` among the clusters that pass the levels above it
+  levels <- names(ds$cluster_meta)
+  above <- levels[seq_len(match(level, levels) - 1)]
+  values <- ds$cluster_meta[[level]][meta_match(ds, filters, above)]
+  sort(unique(values[!is.na(values)]))
+}
+
+meta_active <- function(filters) {
+  #' The filters that restrict anything
+  filters[lengths(filters) > 0]
 }
 
 .ds_cache <- new.env(parent = emptyenv())
@@ -224,6 +286,19 @@ ds_check_config <- function(datasets) {
         "- %s: %s has no probabilities yet. Add them with\n    add_probability(\"%s\", c(<split> = \"<file.rds>\", ...))  # source(\"script/load.R\", chdir = TRUE)",
         id, path, path
       ))
+    } else {
+      levels <- unlist(datasets[[id]]$subset_by)
+      missing <- levels[!vapply(paste0("obs/", META_PREFIX, levels),
+                                function(obj) h5ad_exists(path, obj), logical(1))]
+      if (length(missing) > 0) {
+        problems <- c(problems, sprintf(
+          "- %s: subset_by lists level(s) %s has no metadata for: %s. Add them with set_cluster_metadata() or fix subset_by",
+          id, path, paste(missing, collapse = ", ")
+        ))
+      }
+      if (anyDuplicated(levels)) {
+        problems <- c(problems, sprintf("- %s: subset_by lists a level more than once", id))
+      }
     }
   }
   if (length(problems) > 0) {
@@ -301,6 +376,9 @@ ds_load <- function(id, entry) {
     clusters = clusters,
     cluster_names = cluster_names,
     cluster_labels = format_cluster_labels(clusters, cluster_names),
+    # Only the levels the config offers as filters; none without subset_by
+    cluster_meta = if (length(entry$subset_by) > 0)
+      read_cluster_meta(ch$obs, clusters, entry$clusters, entry$subset_by),
     obs_split = as.character(ch$obs$split),
     obs_cluster = as.character(ch$obs$cluster),
     prob = h5ad_layer(ch, "prob"),

@@ -383,6 +383,85 @@ set_cluster_names <- function(clusters, names) {
   invisible(result)
 }
 
+get_cluster_metadata <- function(clusters, file = NULL) {
+  #' Current metadata: data.frame(cluster_id, <level>, ...), NA = unassigned,
+  #' or NULL when there is none. With `file`, also written there as a TSV
+  #' (empty = unassigned) that set_cluster_metadata() reads back.
+  ch <- h5ad_open(clusters)
+  ids <- levels(ch$obs$cluster)
+  meta <- read_cluster_meta(ch$obs, ids, clusters)
+  if (is.null(meta)) {
+    message("No cluster metadata in ", clusters)
+    return(invisible(NULL))
+  }
+  out <- cbind(data.frame(cluster_id = ids), meta)
+  rownames(out) <- NULL
+  if (!is.null(file)) {
+    write.table(out, file, sep = "\t", quote = FALSE, row.names = FALSE, na = "")
+    message(sprintf("Wrote %d clusters x %d levels to %s", nrow(out), ncol(meta), file))
+  }
+  out
+}
+
+set_cluster_metadata <- function(clusters, meta) {
+  #' Replace the cluster metadata, used by the app to limit searches to a
+  #' subset of clusters.
+  #' meta: data.frame or TSV path with a cluster_id column and one column per
+  #'   level, coarse to fine (e.g. class, subclass): the app cascades the
+  #'   filters in this order. Unlisted clusters and empty values are
+  #'   unassigned. NULL removes the metadata.
+  #' Returns the resulting table (as get_cluster_metadata()), invisibly.
+  ch <- h5ad_open(clusters)
+  ids <- levels(ch$obs$cluster)
+  if (is.null(meta)) {
+    rewrite_obs(clusters, function(obs) meta_obs(obs, NULL))
+    message("Removed the cluster metadata of ", clusters)
+    return(invisible(NULL))
+  }
+  tbl <- read_id_table(meta, "cluster_id")
+  levels <- setdiff(names(tbl), "cluster_id")
+  if (length(levels) == 0) {
+    fail("The table needs at least one column besides cluster_id ",
+         "(to remove the metadata, pass meta = NULL)")
+  }
+  bad <- levels[levels == "" | levels != trimws(levels) | grepl("/", levels, fixed = TRUE)]
+  if (length(bad) > 0 || anyDuplicated(levels)) {
+    fail("Column names must be unique, non-empty, without '/' or surrounding spaces: ",
+         paste(unique(c(bad, levels[duplicated(levels)])), collapse = ", "))
+  }
+  unknown <- setdiff(tbl$cluster_id, ids)
+  if (length(unknown) > 0) {
+    fail(length(unknown), " cluster ID(s) not in ", clusters, ": ",
+         paste(head(unknown, 10), collapse = ", "))
+  }
+  dup <- unique(tbl$cluster_id[duplicated(tbl$cluster_id)])
+  if (length(dup) > 0) {
+    fail("Cluster ID(s) listed more than once: ", paste(head(dup, 10), collapse = ", "))
+  }
+  for (level in levels) tbl[[level]][!is.na(tbl[[level]]) & tbl[[level]] == ""] <- NA
+  no_rows <- setdiff(ids, as.character(ch$obs$cluster))
+  assigned <- rowSums(!is.na(tbl[levels])) > 0
+  homeless <- intersect(tbl$cluster_id[assigned], no_rows)
+  if (length(homeless) > 0) {
+    fail("Cluster(s) with no rows in any split cannot hold metadata: ",
+         paste(head(homeless, 10), collapse = ", "))
+  }
+
+  full <- data.frame(cluster_id = ids)
+  for (level in levels) full[[level]] <- tbl[[level]][match(ids, tbl$cluster_id)]
+  rewrite_obs(clusters, function(obs) meta_obs(obs, full))
+  for (level in levels) {
+    values <- full[[level]][!is.na(full[[level]])]
+    message(sprintf("  %s: %d value(s) (%s), %d cluster(s) unassigned", level,
+                    length(unique(values)),
+                    paste(head(sort(unique(values)), 5), collapse = ", "),
+                    sum(is.na(full[[level]]))))
+  }
+  message(sprintf("Set %d metadata level(s) for %d clusters: %s", length(levels),
+                  length(ids), paste(levels, collapse = " > ")))
+  invisible(full)
+}
+
 set_cluster_ids <- function(clusters, ids, cells = NULL) {
   #' Give every cluster a new ID (and name). Rows and data are unchanged.
   #' ids: data.frame or TSV path with columns cluster_id (current ID), new_id
@@ -489,6 +568,20 @@ names_obs <- function(obs, names) {
   if (any(!is.na(names))) {
     per_row <- unname(names[as.character(obs$cluster)])
     obs$cluster_name <- factor(per_row, levels = sort(unique(names[!is.na(names)])))
+  }
+  obs
+}
+
+meta_obs <- function(obs, meta) {
+  #' obs with its meta_<level> columns replaced by `meta` (data.frame with
+  #' cluster_id and one column per level; NULL drops them all)
+  obs <- obs[!startsWith(names(obs), META_PREFIX)]
+  if (is.null(meta)) return(obs)
+  row <- match(as.character(obs$cluster), meta$cluster_id)
+  for (level in setdiff(names(meta), "cluster_id")) {
+    values <- meta[[level]]
+    obs[[paste0(META_PREFIX, level)]] <- factor(values[row],
+                                                levels = sort(unique(values[!is.na(values)])))
   }
   obs
 }

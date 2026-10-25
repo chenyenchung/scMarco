@@ -37,6 +37,18 @@ expression trend, UMAP and mixture model), where they are listed as
 restrict the analysis to a gene list. Gene symbols change between genome
 releases, so **check that your list uses the same naming scheme as the data**.
 
+#### Search within
+
+Shown for datasets with cluster groupings (e.g. class, then subclass). In
+**Subset clusters by**, pick the groupings to subset by (none = all clusters);
+each one then gets its own dropdown. Pick values there to search only among the
+matching clusters; each grouping narrows the choices of the ones below it, and
+an empty dropdown means "all". Clusters outside the scope disappear from the
+cluster picker, from the off-target counts of **From cluster** and **Find
+distinct genes within**, from **From gene** results and from the
+**Co-expression plot**. **Plot expression trend**, **UMAP** and **Mixture
+model** still show every cluster.
+
 #### Cluster(s) of interest
 
 The cluster to start from (**From cluster**, exactly one), the clusters to tell

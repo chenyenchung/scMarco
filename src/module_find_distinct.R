@@ -61,15 +61,15 @@ find_distinct_server <- function(id, ctx, coexp_session) {
             "No distinctive genes found",
             HTML(paste0(
               "<p>No gene distinguishes the selected clusters. ",
-              describe_splits(ctx$required(), ctx$min_n(), ctx$split_label()),
+              describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$scope()),
               "</p><p>Try a larger confidence margin, fewer required ",
               ctx$split_label(), "s, different clusters, or a broader gene list.</p>"
             ))
           )
           if (!ok) return(NULL)
           n_show <- max(1, as.integer(input$n_show), na.rm = TRUE)
-          list(tbl = tbl, n_show = n_show,
-               idents = idents, b = b, ds = ctx$ds(), first = ctx$first_mark())
+          list(tbl = tbl, n_show = n_show, idents = idents, b = b, ds = ctx$ds(),
+               first = ctx$first_mark(), scoped = !is.null(ctx$scope()))
         }
       )
 
@@ -127,9 +127,11 @@ find_distinct_server <- function(id, ctx, coexp_session) {
         tbl <- data.frame(
           Cluster = cluster_label(res$ds, res$tbl$cluster),
           Gene = res$tbl$gene,
-          `Clusters outside the selection also ON` = res$tbl$offtargets,
+          Off = res$tbl$offtargets,
           check.names = FALSE
         )
+        names(tbl)[3] <- paste0("Clusters outside the selection also ON",
+                                if (res$scoped) " (within the search scope)")
         if (length(res$first) > 0) {
           pair_col <- sprintf("Other clusters with %s & gene both ON",
                               paste(res$first, collapse = " & "))

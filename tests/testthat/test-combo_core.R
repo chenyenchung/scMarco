@@ -182,3 +182,16 @@ test_that("an ambiguous gene makes co-expression undetermined", {
   expect_equal(state("A", "s1"), "Ambiguous")
   expect_equal(state("A", "s2"), "Not expressed")
 })
+
+test_that("restrict_clusters hides the clusters left out from every search", {
+  b <- restrict_clusters(toy(), c("C", "A"))
+  expect_equal(b$clusters, c("A", "C"))
+  expect_equal(dimnames(b$on)[[2]], c("A", "C"))
+  expect_equal(rownames(b$present), c("A", "C"))
+  # g2 is also ON in B, which is out of scope now
+  expect_equal(from_cluster(toy(), "A", character(0), 1)[["g2"]], 1L)
+  expect_equal(from_cluster(b, "A", character(0), 1)[["g2"]], 0L)
+  expect_false("B" %in% clusters_expressing(b, "g2", character(0), 1))
+  expect_error(target_genes(b, "B", character(0), 1))
+  expect_identical(restrict_clusters(toy(), c("A", "B", "C")), toy())
+})

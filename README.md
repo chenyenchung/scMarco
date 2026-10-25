@@ -42,6 +42,8 @@ datasets:
     split_order: [...]       # optional overrides of the file's uns/scmarco
     split_label: stage
     ordered_splits: true
+    subset_by: [class, subclass]  # optional: obs/meta_<level> columns users can
+                                  # subset clusters by, coarse to fine
 gene_list:
   flybase_tf: {path: gene_lists/flybase_tfs.txt, label: "FlyBase TFs"}
 ```
@@ -55,7 +57,7 @@ that exists.
 
 | slot | content |
 |---|---|
-| `obs` | index `"<split>\|<cluster>"`; `split` (categorical, ordered when splits are ordered), `cluster` (categorical cluster ID), optional `cluster_name` (categorical; missing = unnamed), optional `n_cells` |
+| `obs` | index `"<split>\|<cluster>"`; `split` (categorical, ordered when splits are ordered), `cluster` (categorical cluster ID), optional `cluster_name` (categorical; missing = unnamed), optional `meta_<level>` (categorical cluster metadata; the config's `subset_by` picks which levels limit the searches), optional `n_cells` |
 | `var` | index = genes (sorted); optional `is_bimodal` (bool): genes used for marker finding |
 | `varm/bimodal_by_split` | optional genes × splits 0/1, column order in `uns/scmarco/bimodal_splits` |
 | `varm/mixture_on_level`, `mixture_off_level`, `mixture_sd`, `mixture_pi` | optional genes × splits mixture-model fit (ON and OFF component means, shared SD, ON weight), same column order; enables the Mixture model tab |
@@ -100,6 +102,7 @@ source("script/load.R", chdir = TRUE)
 | `seurat_to_h5ad()` | new data: Seurat object (split and cluster ID in metadata columns), or one object per split (`c(P15 = "a.rds", P30 = "b.rds")`), + optional subset UMAPs → a *built* dataset; `prob` also binarizes it |
 | `add_probability()` | binarize a built dataset with the mixture-model output, one table per split; the app needs this step |
 | `get_cluster_names()` / `set_cluster_names()` | read, export or apply a `cluster_id`/`name` table |
+| `get_cluster_metadata()` / `set_cluster_metadata()` | read, export or replace a `cluster_id`/`<level>`/... table of cluster groupings (e.g. class, subclass) that lets users limit searches to part of the dataset |
 | `set_cluster_ids()` | give every cluster a new ID (and name) from a `cluster_id`/`new_id`/`name` table |
 | `migrate_cluster_labels()` | turn legacy `name (id)` labels into ID + name |
 | `validate_h5ad(clusters, cells, stage)` | check a dataset before deploying (`stage = "built"` for one without probabilities yet); `add_probability()` runs it after writing |

@@ -51,6 +51,19 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
            "migrate_cluster_labels()")
     }
   }
+  for (col in names(ch$obs)[startsWith(names(ch$obs), META_PREFIX)]) {
+    if (!is.factor(ch$obs[[col]])) err("obs/", col, " must be categorical")
+    values <- tryCatch(
+      read_cluster_column(ch$obs, col, levels(ch$obs$cluster)),
+      error = function(e) {
+        err("obs/", col, " must be the same in every split of a cluster")
+        NULL
+      }
+    )
+    lv <- levels(ch$obs[[col]])
+    if (any(lv != trimws(lv))) err("obs/", col, " values start or end with whitespace")
+    if (!is.null(values) && all(is.na(values))) warn("obs/", col, " is empty for every cluster")
+  }
   empty <- setdiff(levels(ch$obs$cluster), as.character(ch$obs$cluster))
   if (length(empty) > 0) {
     warn(length(empty), " cluster(s) have no rows in any split (always absent), e.g. ",

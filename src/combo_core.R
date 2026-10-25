@@ -87,6 +87,18 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
   )
 }
 
+restrict_clusters <- function(b, keep) {
+  #' The binarized dataset seen through a subset of clusters (dataset order
+  #' kept): every search then ignores the clusters left out
+  keep <- b$clusters[b$clusters %in% keep]
+  if (identical(keep, b$clusters)) return(b)
+  b$on <- b$on[, keep, , drop = FALSE]
+  b$ambiguous <- b$ambiguous[, keep, , drop = FALSE]
+  b$present <- b$present[keep, , drop = FALSE]
+  b$clusters <- keep
+  b
+}
+
 check_split_args <- function(b, required, min_n) {
   unknown <- setdiff(required, b$splits)
   if (length(unknown) > 0) {

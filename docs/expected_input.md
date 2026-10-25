@@ -110,6 +110,48 @@ G_PsCrtrg	1+2	PCG
 set_cluster_ids("data/<id>.clusters.h5ad", "ids.tsv", cells = "data/<id>.cells.h5ad")
 ```
 
+### Cluster metadata (optional)
+
+A table of groupings lets app users limit the searches to part of the dataset,
+e.g. "among Tm neurons only". Its first column is `cluster_id`; every other
+column is one level (e.g. class, then subclass):
+
+```
+cluster_id	class	subclass
+151	neuron	T4/T5
+154	neuron	Mi
+3	glia	astrocyte
+```
+
+```r
+set_cluster_metadata("data/<id>.clusters.h5ad", "meta.tsv")   # or a data.frame
+get_cluster_metadata("data/<id>.clusters.h5ad", "meta.tsv")   # current table (and the TSV)
+set_cluster_metadata("data/<id>.clusters.h5ad", NULL)         # remove it
+```
+
+The table replaces any earlier one. Unlisted clusters and empty values are
+unassigned, and an unassigned cluster is left out whenever its level is
+filtered. Unknown or repeated IDs are errors, and column names must be unique
+and must not contain `/`. Each level is stored as `obs/meta_<level>`; the
+metadata is kept when `set_cluster_ids()` renames the clusters.
+
+The app only offers the levels listed under the dataset's `subset_by` in the
+config, in that order (coarse to fine); without it, there is no subsetting:
+
+```yaml
+datasets:
+  my_data:
+    clusters: data/<id>.clusters.h5ad
+    subset_by: [class, subclass]
+```
+
+In the app, users pick which of these levels to subset by ("Subset clusters
+by", none by default = all clusters); each picked level gets a "Search within"
+filter. Choosing values at a level narrows the choices of the picked levels
+below it. The cluster picker, From cluster, From gene, Find distinct and the
+co-expression plot then only see the matching clusters. Expression trend, UMAP
+and Mixture model still show every cluster.
+
 ### Split order
 
 | Argument | Meaning |

@@ -74,6 +74,7 @@ ui <- fluidPage(
         c("All" = "All", setNames(names(gene_list_labels), gene_list_labels)),
         selected = "All"
       ),
+      uiOutput("meta_filter"),
       selectizeInput(
         'clusters_of_interest',
         'Cluster(s) of interest',
@@ -149,11 +150,95 @@ server <- function(input, output, session) {
   # Debounced: each distinct margin is a full binarize, so don't run one per
   # intermediate slider position
   margin <- debounce(reactive(input$margin / 100), 500)
-  b <- reactive(ds_binarize(ds(), margin()))
+
+  # Cluster metadata: the user picks which levels (config subset_by) to subset
+  # by, and each picked level shows its own filter. Levels cascade coarse to
+  # fine: each narrows the choices of the levels below it. Searches only see
+  # clusters that match. An unpicked level is "all".
+  output$meta_filter <- renderUI({
+    meta <- ds()$cluster_meta
+    if (is.null(meta)) return(NULL)
+    tagList(
+      selectizeInput("meta_levels", "Subset clusters by", choices = names(meta),
+                     multiple = TRUE, options = list(placeholder = "none (all clusters)")),
+      lapply(seq_along(meta), function(i) {
+        conditionalPanel(
+          sprintf("(input.meta_levels || []).indexOf(%s) > -1",
+                  encodeString(names(meta)[i], quote = '"')),
+          selectizeInput(
+            paste0("meta_", i), paste0("Search within: ", names(meta)[i]),
+            choices = sort(unique(meta[[i]][!is.na(meta[[i]])])), multiple = TRUE,
+            options = list(placeholder = "all")
+          )
+        )
+      }),
+      helpText(textOutput("meta_scope", inline = TRUE))
+    )
+  })
+
+  meta_filters <- reactive({
+    meta <- ds()$cluster_meta
+    if (is.null(meta)) return(list())
+    active <- input$meta_levels
+    # Values left over from another dataset are ignored, not matched
+    setNames(lapply(seq_along(meta), function(i) {
+      if (!names(meta)[i] %in% active) return(character(0))
+      as.character(intersect(input[[paste0("meta_", i)]], meta[[i]]))
+    }), names(meta))
+  })
+
+  # A level that is no longer picked goes back to "all"
+  observeEvent(input$meta_levels, ignoreNULL = FALSE, {
+    meta <- ds()$cluster_meta
+    for (i in seq_along(meta)) {
+      key <- paste0("meta_", i)
+      if (!names(meta)[i] %in% input$meta_levels && length(input[[key]]) > 0) {
+        updateSelectizeInput(session, key, selected = character(0))
+      }
+    }
+  })
+
+  universe <- reactive(meta_universe(ds(), meta_filters()))
+
+  # Last choices sent per level, so a level is only updated when they change
+  # (updating closes an open dropdown)
+  meta_sent <- new.env(parent = emptyenv())
+  observeEvent(ds(), rm(list = ls(meta_sent), envir = meta_sent))
+  observeEvent(meta_filters(), {
+    filters <- meta_filters()
+    for (i in seq_along(filters)[-1]) {
+      level <- names(filters)[i]
+      choices <- meta_level_choices(ds(), filters, level)
+      kept <- as.character(intersect(filters[[i]], choices))
+      key <- paste0("meta_", i)
+      if (!identical(meta_sent[[key]], choices) || !identical(kept, filters[[i]])) {
+        updateSelectizeInput(session, key, choices = choices, selected = kept)
+        meta_sent[[key]] <- choices
+      }
+      filters[i] <- list(kept)
+    }
+  })
+
+  output$meta_scope <- renderText({
+    sprintf("%d of %d clusters searched.", length(universe()), length(ds()$clusters))
+  })
+
+  b <- reactive(restrict_clusters(ds_binarize(ds(), margin()), universe()))
+
+  # The cluster picker lists the clusters in scope; a new dataset starts empty
+  shown_ds <- NULL
+  observeEvent(universe(), {
+    keep <- if (identical(shown_ds, ds()$id)) {
+      intersect(isolate(input$clusters_of_interest), universe())
+    } else {
+      character(0)
+    }
+    shown_ds <<- ds()$id
+    updateSelectizeInput(session, "clusters_of_interest",
+                         choices = cluster_choices(ds(), universe()), selected = keep)
+  })
 
   observeEvent(ds(), {
-    updateSelectizeInput(session, "clusters_of_interest",
-                         choices = cluster_choices(ds()), selected = character(0))
     first_mark(character(0))
 
     has_trend <- ds()$has_mean && ds()$ordered_splits
@@ -213,6 +298,7 @@ server <- function(input, output, session) {
     min_n = min_n,
     margin = margin,
     split_label = reactive(ds()$split_label),
+    scope = reactive(describe_scope(ds(), meta_filters())),
     first_mark = first_mark,
     parent_session = session
   )

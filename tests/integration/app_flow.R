@@ -95,6 +95,30 @@ for (ds_id in intersect(names(config$datasets), strsplit(Sys.getenv("ONLY", past
       render_ok(output$`fexp-selectTbl`)
       session$setInputs(required_splits = character(0))
 
+      if (!is.null(ds_obj$cluster_meta)) {
+        # Search within the top-level group of the picked cluster
+        top <- ds_obj$cluster_meta[pick$cluster, 1]
+        if (!is.na(top)) {
+          session$setInputs(meta_1 = top)
+          # Values of a level that is not picked are ignored
+          expect_equal(b()$clusters, ds_obj$clusters)
+          session$setInputs(meta_levels = names(ds_obj$cluster_meta)[1])
+          scope <- ds_obj$clusters[ds_obj$cluster_meta[[1]] %in% top]
+          expect_equal(b()$clusters, scope)
+          expect_match(ctx$scope(), "Searching within", fixed = TRUE)
+          fc <- from_cluster(b(), pick$cluster, character(0), 1, limit = 10,
+                             genes = ds_obj$analysis_genes)
+          full <- from_cluster(b_obj, pick$cluster, character(0), 1, limit = Inf,
+                               genes = ds_obj$analysis_genes)
+          expect_true(all(fc <= full[names(fc)]))
+          session$setInputs(clusters_of_interest = pick$cluster, `fexp-do_fexp` = 3)
+          expect_match(as.character(output$`fexp-selectTbl`$html), "Searching within",
+                       fixed = TRUE)
+          session$setInputs(meta_levels = character(0))
+          expect_equal(b()$clusters, ds_obj$clusters)
+        }
+      }
+
       if (ds_obj$has_mean && ds_obj$ordered_splits) {
         session$setInputs(`lplot-gene_of_interest` = pick$gene,
                           `lplot-line_alpha` = 0.2, `lplot-do_lineplot` = 1)
