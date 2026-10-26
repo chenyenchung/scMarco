@@ -1,0 +1,11 @@
+^renv$
+^renv\.lock$
+^\.Rprofile$
+^\.jj$
+^deploy$
+^docs$
+^to-do\.md$
+^LICENSE\.md$
+^\.github$
+^.*\.Rproj$
+^\.Rproj\.user$

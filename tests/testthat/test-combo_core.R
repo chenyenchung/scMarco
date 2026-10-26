@@ -1,5 +1,3 @@
-source(file.path(testthat::test_path(), "..", "..", "src", "combo_core.R"))
-
 # Toy dataset: 5 genes, clusters A/B/C, splits s1/s2/s3; C is absent from s3.
 # Values are probabilities; rows are split|cluster observations.
 toy <- function(margin = 0.5, bimodal = NULL) {
@@ -140,7 +138,6 @@ test_that("non-bimodal genes are never ON and are reported as such", {
 })
 
 test_that("a non-bimodal gene makes co-expression undetermined, like NA", {
-  source(file.path(testthat::test_path(), "..", "..", "src", "plot_core.R"))
   bim <- matrix(TRUE, 5, 3, dimnames = list(paste0("g", 1:5), paste0("s", 1:3)))
   bim["g2", "s3"] <- FALSE
   b <- toy(bimodal = bim)
@@ -174,7 +171,6 @@ test_that("calls inside the confidence margin are ambiguous and never help", {
 })
 
 test_that("an ambiguous gene makes co-expression undetermined", {
-  source(file.path(testthat::test_path(), "..", "..", "src", "plot_core.R"))
   b <- toy(margin = 0.2)
   co <- coexp_data(NULL, b, c("g1", "g5"))
   co <- co[co$gene == "Co-expressed", ]

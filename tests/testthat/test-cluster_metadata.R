@@ -1,7 +1,3 @@
-root <- normalizePath(file.path(testthat::test_path(), "..", ".."))
-suppressMessages(source(file.path(root, "script", "load.R"), chdir = TRUE))
-source(file.path(root, "src", "ui_helpers.R"))
-
 make_meta_toy <- function(dir) {
   # Four clusters in two splits; cluster 4 exists only in F
   cpath <- file.path(dir, "meta.clusters.h5ad")

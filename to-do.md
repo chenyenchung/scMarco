@@ -1,124 +1,108 @@
 # To-do: finish the harmonized scMarco
 
-Status (2026-09-28): the app runs end to end on all five converted datasets.
-The logic parity check against both legacy forks passes 88/88, and the unit and
-integration tests are green. This list covers what is left for:
+The repo is an R package (`R/`, `man/`, `inst/`, `vignettes/`,
+`tests/testthat/`). The lab instances, converted data, `misc/` helpers and the
+data-dependent integration/parity scripts live in `deploy/`. The input formats
+are specified in [`docs/expected_input.md`](docs/expected_input.md).
 
-1. **Migration**, from the two supported legacy sources only: the Ding-lab
-   production HDF5 v1.0 (`db.h5`) and the legacy scMarco SQLite. The internal
-   `dinglab.sqlite` and the pre-v1 HDF5 are out of scope.
-2. **Building backend files without the binarization data** from a Seurat
-   object, with the mixture-model probabilities added in a separate step. A
-   dataset without `layers/prob` makes the app **error out**.
+## Bioconductor submission
 
-The input formats are specified in [`docs/expected_input.md`](docs/expected_input.md).
+- [x] Package skeleton: DESCRIPTION (0.99.0, biocViews), NAMESPACE via
+  roxygen, help pages with runnable examples for every export, NEWS.md,
+  BiocStyle vignette, testthat suite, small example data with generating
+  scripts in `inst/scripts/`.
+- [x] `R CMD check`: Status OK. BiocCheck: no warnings.
+- [ ] Register `chenyenjung@gmail.com` on https://support.bioconductor.org and
+  add the `scmarco` watched tag (the one BiocCheck ERROR), and subscribe to
+  bioc-devel.
+- [ ] Optional: ORCID iD in `Authors@R`; `fnd` role for funding.
+- [ ] Consider an interface from `SingleCellExperiment` (reviewers tend to ask
+  for interoperability with Bioconductor classes): e.g. build a dataset from
+  an SCE as `seurat_to_h5ad()` does from Seurat.
+- [ ] Remaining BiocCheck NOTEs: long functions (Shiny servers), lines > 80
+  characters (most in `R/build.R`, `R/import.R`, `R/plot_core.R`), `<<-` in
+  `validate_h5ad()` (`R/validate.R`) and the app server (`R/app.R`).
+- [ ] Update the Quarto user guide (`docs/src/config.qmd` still describes the
+  legacy SQLite config) and publish the GitHub repo, then submit at
+  https://github.com/Bioconductor/Contributions.
 
-## 0. Expected input spec
+## Migration (two paths only)
 
-- [x] Write `docs/expected_input.md` (Seurat object, probability tables, file states).
-- [ ] Keep it in sync with `script/lib_import.R` and `script/lib_build.R` as they are implemented.
+Only the Ding-lab production HDF5 v1.0 (`db.h5`) and the legacy scMarco SQLite
+are supported; the internal `dinglab.sqlite` and the pre-v1 HDF5 are out of
+scope. Both converters are in `R/migrate.R`.
 
-## 1. Shared plumbing
-
-- [x] `script/lib_write_h5ad.R`: make `prob` optional in `write_clusters_h5ad()`.
-  Add `add_probability_layer(path, prob, is_bimodal, bimodal_by_split, meta)`,
-  which reads with `anndataR::read_h5ad`, adds the layer, `var` and `varm`,
-  rewrites the file, then reuses `rechunk_h5ad()`.
-- [x] `script/validate_h5ad.R`: add `--stage built|binarized` (default
-  `binarized`). A missing `prob` is an error for `binarized` and fine for
-  `built`. Add the Seurat-derived checks from the spec (name rules, obs
-  index separator, `uns/scmarco/binarization`).
-- [x] `src/backend_h5ad.R` `ds_load()` and `app.R`: at startup, check **every**
-  configured dataset, then stop with one message that lists each dataset
-  missing `prob` and the fix (`Rscript script/add_probability_h5ad.R ...`).
-  Today `ds_load()` stops on the first such dataset with a terse message.
-
-## 2. Migration (two paths only)
-
-- [ ] **Legacy SQLite** (`sqlite_to_h5ad()` in `script/lib_migrate.R`): take
+- [ ] **Legacy SQLite** (`sqlite_to_h5ad()`): take
   `legacy_config = "../scMarco/config.yaml"` so stages and labels come from the
   old config instead of a manual `stages`. Add a way to migrate every table
   listed there.
-- [ ] **Ding-lab HDF5 v1.0** (`h5v1_to_h5ad()` in `script/lib_migrate.R`): handle every
-  dataset in `db.h5`, taking `split_label` from the legacy Ding config. Treat
-  `pct_pos`, `lognorm` and `reduction` as optional, as the v1 spec does: with no
-  `lognorm`, write no cells file and no `mean_lognorm`. Fix the per-split
-  "non-bimodal" log line so it reports the value after the `is_bimodal` fix.
-- [ ] `migrate_legacy()` in `script/lib_migrate.R`: one function that takes
-  `sqlite = <db>` or `h5 = <db.h5>`, plus `legacy_config = <yaml>`.
-  It converts the data, copies the gene lists the old config references into
-  `gene_lists/`, writes `configs/<name>.yaml`, and runs the validator.
-- [ ] **Value round-trip check** (`tests/parity/roundtrip.R`), alongside the logic
-  check `tests/parity/parity.R`, which already passes. Sample random cells and
-  entries and compare legacy and new values for:
+- [ ] **Ding-lab HDF5 v1.0** (`h5v1_to_h5ad()`): handle every dataset in
+  `db.h5`, taking `split_label` from the legacy Ding config. Treat `lognorm` as
+  optional, as the v1 spec does: with no `lognorm`, write no cells file and no
+  `mean_lognorm` (`pct_pos` and `reduction` are already optional). Fix the
+  per-split "non-bimodal" log line so it reports the value after the
+  `is_bimodal` fix.
+- [ ] `migrate_legacy()`: one function that takes `sqlite = <db>` or
+  `h5 = <db.h5>`, plus `legacy_config = <yaml>`. It converts the data, copies
+  the gene lists the old config references into `gene_lists/`, writes
+  `configs/<name>.yaml`, and runs the validator.
+- [ ] **Value round-trip check** (`deploy/tests/parity/roundtrip.R`), alongside
+  the logic check `deploy/tests/parity/parity.R`, which already passes. Sample
+  random cells and entries and compare legacy and new values for:
   - `prob` and `pct_pos`;
   - SQLite `lognorm` vs `mean_lognorm`;
   - v1 CSR vs `cells.h5ad` per-gene expression;
   - UMAP coordinates, including `cell_indices` subsets;
   - per-cell cluster labels.
-- [ ] Converter unit tests on tiny synthetic inputs built inside the tests: a
-  3-gene SQLite, and a v1 `db.h5` written with rhdf5 that has absent clusters,
-  `-1` non-bimodal values and a subset UMAP.
+- [ ] Converter unit test for a subset UMAP with `cell_indices`
+  (`tests/testthat/test-migrate.R` covers the rest).
 - [ ] Document known migration facts: the optic-lobe data has no bimodality
   information (every gene is used, as before), and `ozel_2021` is deprecated but
   kept.
 
-## 3. Build from Seurat without binarization
+## Wrap-up
 
-- [x] Split `script/seurat_to_h5ad.R` into a **build** step that makes `--prob`
-  optional. The build step writes `clusters.h5ad` with `pct_pos`,
-  `mean_lognorm` and `n_cells`, plus `cells.h5ad`, and leaves the file in the
-  *built* state.
-- [x] Support `--split-col` / `--cluster-col` (defaults `scmarco_split` /
-  `scmarco_cluster`; `--split-col none` for one split), with the
-  `<split>@<cluster>` identities as fallback. Input checks are
-  `seurat_labels()` / `check_labels()` / `assemble_prob()` in
-  `script/lib_import.R`, with actionable errors, following the spec.
-- [x] New `script/add_probability_h5ad.R`: reads one mixture-model table per
-  split (`--prob Male=a.rds,Female=b.rds`, or one `.rds` with a named list),
-  whose columns are cluster IDs plus QC columns with a per-split `exprType`.
-  The legacy wide `<split>@<cluster>` RDS is accepted as a fallback. It
-  validates the tables against the clusters file and writes
-  `prob`, `is_bimodal`, `bimodal_by_split` and `uns/scmarco/binarization`, then
-  validates with `--stage binarized`.
-- [x] Tests, extending `tests/testthat/test-seurat_import.R`:
-  1. build, then validate (`built`);
-  2. check that the app refuses the dataset;
-  3. add probabilities, from per-split files, a named-list RDS and the legacy
-     wide RDS, including a gene that is bimodal in only one split;
-  4. validate (`binarized`);
-  5. check that `ds_load()` works and `from_cluster()` gives the expected result.
-
-  Add one bad-input test per rule in the spec.
-
-## 4. Wrap-up
-
-- [ ] Update `README.md` with the two-step build, the migration commands and a link
-  to `docs/expected_input.md`.
+- [ ] Link `docs/expected_input.md` from `README.md`.
 - [ ] Re-run all checks:
-  - `Rscript -e 'testthat::test_dir("tests/testthat")'`
-  - `SCMARCO_CONFIG=configs/all.yaml Rscript tests/integration/app_flow.R`
-  - `Rscript tests/parity/parity.R ../scMarco ../scMarco-Ding-lab`
-  - `Rscript tests/parity/roundtrip.R ../scMarco ../scMarco-Ding-lab`
+  - `Rscript -e 'testthat::test_local()'`
+  - from `deploy/`: `SCMARCO_CONFIG=configs/all.yaml Rscript tests/integration/app_flow.R`
+  - from `deploy/`: `Rscript tests/parity/parity.R ../../scMarco ../../scMarco-Ding-lab`
+  - from `deploy/`: `Rscript tests/parity/roundtrip.R ../../scMarco ../../scMarco-Ding-lab`
 - [ ] Click through in a browser once for each lab config.
-- [ ] Make the first git commit, once the user OKs it, and decide where the
-  converted `data/*.h5ad` files live (they are git-ignored).
+- [ ] Decide where the converted `deploy/data/*.h5ad` files live (they are
+  git-ignored).
 
 ## Done when
 
-- The unit tests pass, including the new converter and two-step build tests.
-- `script/migrate_legacy.R` on `../scMarco` and `../scMarco-Ding-lab`
-  reproduces the current `data/*.h5ad`, and both parity scripts report 0
-  mismatches.
-- An app started with a *built*-only dataset fails at startup with the
-  listing message. After `add_probability_h5ad.R`, it starts and
-  `tests/integration/app_flow.R` passes.
+- The unit tests pass.
+- `migrate_legacy()` on `../scMarco` and `../scMarco-Ding-lab` reproduces the
+  current `deploy/data/*.h5ad`, and both parity scripts report 0 mismatches.
+- `tests/integration/app_flow.R` passes on every lab config.
+
+## Done
+
+- Expected-input spec (`docs/expected_input.md`), kept in sync with
+  `R/import.R` and `R/build.R`.
+- Two-step build: `seurat_to_h5ad()` writes a *built* dataset (optional
+  `prob`, `split_col`/`cluster_col`, `<split>@<cluster>` fallback); `add_probability()` binarizes it from per-split tables, a
+  named-list RDS or the legacy wide RDS, then validates with
+  `stage = "binarized"`.
+- `validate_h5ad(stage = "built" | "binarized")` with the Seurat-derived checks.
+- The app checks every configured dataset at startup and lists each one
+  missing `prob` with the `add_probability()` fix.
+- Tests for the build/binarize/validate/load flow, bad inputs, and the
+  converters on tiny synthetic SQLite and v1 `db.h5` inputs.
 
 ## Backlog (future)
+
+- [ ] **Backend updater** (like `UpdateSeuratObject()`), needed with the first
+  bump of `SCMARCO_FORMAT_VERSION`: rewrite an older file to the current
+  schema in place. Then point the "rebuild the dataset" message of
+  `ds_check_config()` (`format_problem()` in `R/backend_h5ad.R`) at it.
 
 - [ ] **smk pipeline helper** for
   [mixture_modeling_smk](https://github.com/chenyenchung/mixture_modeling_smk):
   export the pipeline's inputs from a *built* dataset, run or submit the
-  pipeline, and import its output through `add_probability_h5ad.R`, which
+  pipeline, and import its output through `add_probability()`, which
   already reads the pipeline's per-split tables as they are, so this helper
   needs no new import format. The export format still has to be confirmed against the pipeline.

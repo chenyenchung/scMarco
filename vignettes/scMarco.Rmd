@@ -1,0 +1,258 @@
+---
+title: "Selecting marker gene combinations with scMarco"
+author:
+- name: Yen-Chung Chen
+  email: chenyenjung@gmail.com
+date: "`r Sys.Date()`"
+output:
+  BiocStyle::html_document:
+    toc_float: true
+bibliography: references.bib
+vignette: >
+  %\VignetteIndexEntry{Selecting marker gene combinations with scMarco}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 5)
+```
+
+# Introduction
+
+Genetic access to one cell type often needs a combination of marker genes:
+intersectional tools such as split-GAL4 label only the cells that express
+*both* genes of a pair. Single-cell RNA-seq atlases tell which genes each
+cluster expresses, but choosing a combination by hand means comparing hundreds
+of clusters at once, often across developmental stages, sexes or species.
+
+**scMarco** makes that search systematic. Expression is first binarized per
+cluster with a Bayesian mixture model [@davis2020], so each gene is ON, OFF or
+ambiguous in each cluster and in each *split* of the data (stage, sex,
+species, ...). scMarco then
+
+* ranks the candidate markers of a cluster by their off-target clusters;
+* ranks gene pairs by the clusters in which both genes are ON;
+* finds genes that tell apart the off-targets of a first marker;
+* plots the ON/OFF states, co-expression, expression levels, UMAPs and the
+  mixture-model fit of each gene.
+
+scMarco was first developed to select split-GAL4 lines for the fly visual
+system [@Chen2023.02.03.527019].
+
+Everything is available both from R, as shown here, and in an interactive
+Shiny app (Section \@ref(the-shiny-app)).
+
+# Installation
+
+```{r install, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+BiocManager::install("scMarco")
+```
+
+# A first dataset
+
+scMarco datasets are [AnnData](https://anndata.readthedocs.io) (h5ad) files,
+read with *[rhdf5](https://bioconductor.org/packages/rhdf5)* so that single
+genes can be read without loading whole matrices:
+
+* `<id>.clusters.h5ad` (required) holds one row per split and cluster, with
+  the mixture model's probability of expression of every gene and, optionally,
+  the fraction of cells with UMIs (`pct_pos`) and cluster-average expression
+  (`mean_lognorm`);
+* `<id>.cells.h5ad` (optional) holds the log-normalized expression of every
+  cell and its reductions (UMAPs).
+
+The package ships a small synthetic dataset with both files: eight clusters
+of fly optic-lobe-like neurons and glia, split by sex.
+
+```{r load}
+library(scMarco)
+toy <- system.file("extdata", package = "scMarco")
+ds <- ds_load("toy", list(
+    label = "Toy dataset",
+    clusters = file.path(toy, "toy.clusters.h5ad"),
+    cells = file.path(toy, "toy.cells.h5ad")
+))
+ds$splits
+ds$cluster_labels
+length(ds$all_genes)
+```
+
+Clusters have a stable ID, used everywhere, and an optional name shown as
+`name (id)`. Cluster 8 has no cells in females; scMarco keeps track of which
+clusters exist in which split, so an absent cluster is never mistaken for one
+that is OFF.
+
+# Binarization
+
+`ds_binarize()` turns the probabilities into calls at a *confidence margin*: a
+gene is ON when its probability is at least `1 - margin`, OFF when it is at
+most `margin`, and ambiguous in between. Ambiguous calls never count as ON,
+but they do count as possible off-target expression, so a combination is never
+made to look more specific than the data support.
+
+```{r binarize}
+b <- ds_binarize(ds, margin = 0.1)
+b$on["Kr", , "Male"]
+```
+
+# Finding markers
+
+## From a cluster
+
+`from_cluster()` lists the genes ON in a cluster, fewest off-target clusters
+first. Split criteria say in which splits a gene must be ON: here, in at
+least one sex.
+
+```{r from-cluster}
+from_cluster(b, ident = "1", required = character(0), min_n = 1)
+```
+
+To require expression in both sexes, list them in `required` (or raise
+`min_n`):
+
+```{r from-cluster-both}
+from_cluster(b, ident = "2", required = c("Male", "Female"), min_n = 2)
+```
+
+## Gene pairs
+
+When no single gene is specific, a pair can be. `pair_offtargets()` ranks the
+pairs of candidate genes by the clusters in which *both* are ON:
+
+```{r pairs}
+pair_offtargets(b, ident = "2", required = character(0), min_n = 1, limit = 5)
+```
+
+`find_pairs()` runs the same search for every cluster of a dataset.
+
+## From a gene
+
+`clusters_expressing()` goes the other way: which clusters express a gene, or
+all genes of a combination?
+
+```{r from-gene}
+clusters_expressing(b, "Kr", required = character(0), min_n = 1)
+clusters_expressing(b, c("Kr", "pdm2"), required = character(0), min_n = 1)
+```
+
+## Telling clusters apart
+
+A first marker usually labels a few clusters. `distinct_within()` finds genes
+that mark exactly one (or `k`) of them and none of the others, so that the
+pair labels a single cluster:
+
+```{r distinct}
+others <- clusters_expressing(b, "hth", required = character(0), min_n = 1)
+others
+distinct_within(b, others, required = character(0), min_n = 1)
+```
+
+# Plots
+
+ON/OFF states of the candidates, one panel per cluster (gray is ambiguous):
+
+```{r onoff, fig.height = 4}
+onoff_plot(ds, b, genes = c("hth", "hb", "Optix", "acj6"),
+           idents = c("1", "4", "6"))
+```
+
+Co-expression of a combination in every cluster that expresses any of its
+genes, with the fraction of cells co-expressing them:
+
+```{r coexp, fig.height = 4}
+coexp_plot(ds, b, c("hth", "hb"), show_pct = TRUE)
+```
+
+Expression levels behind the calls, per cell and per sex:
+
+```{r box}
+box_plot(ds, "dsx", highlight = c("2", "5"), interactive = FALSE)
+```
+
+Cells on the UMAP, colored by a gene:
+
+```{r umap}
+umap_plot(ds, "X_umap_full", color_by = "gene", gene = "hth")
+```
+
+And the mixture-model fit behind a gene's calls, with each cluster placed on
+the fitted curve:
+
+```{r mixture, fig.height = 7}
+mixture_plot(ds, "hth", model = "Male", highlight = c("1", "4", "6"),
+             margin = 0.1)
+```
+
+# Building a dataset
+
+New datasets are built in two steps:
+
+1. `seurat_to_h5ad()` writes both files from a Seurat object whose metadata
+   holds each cell's split and cluster ID (or one object per split);
+2. the mixture model [@davis2020] is fit outside R, for example with the
+   [mixture_modeling_smk](https://github.com/chenyenchung/mixture_modeling_smk)
+   pipeline, and `add_probability()` adds its output, one table per split.
+
+```{r build, eval = FALSE}
+seurat_to_h5ad("neurons.rds", "neurons", out_dir = "data",
+               split_col = "sex", cluster_col = "seurat_clusters",
+               split_label = "sex")
+add_probability("data/neurons.clusters.h5ad",
+                c(Male = "male_prob.rds", Female = "female_prob.rds"))
+```
+
+`validate_h5ad()` checks a dataset before it is deployed, and
+`set_cluster_names()` and `set_cluster_metadata()` annotate clusters in
+place, without rewriting the data:
+
+```{r annotate}
+path <- tempfile(fileext = ".clusters.h5ad")
+file.copy(file.path(toy, "toy.clusters.h5ad"), path)
+set_cluster_names(path, c("3" = "T4/T5"))
+get_cluster_metadata(path)
+report_validation(validate_h5ad(path), path)
+```
+
+Datasets from the two earlier versions of scMarco convert with
+`sqlite_to_h5ad()` and `h5v1_to_h5ad()`.
+
+# The Shiny app
+
+The app is configured by a YAML file that lists the datasets, optional gene
+lists to restrict the searches to (e.g. transcription factors, or genes with
+available driver lines) and the page's title, theme and introduction:
+
+```yaml
+title: "scMarco"
+readme: [readme/intro.md]
+datasets:
+  toy:
+    label: "Toy dataset"
+    clusters: data/toy.clusters.h5ad
+    cells: data/toy.cells.h5ad
+    subset_by: [class]       # let users search within part of the dataset
+gene_list:
+  tfs: {path: gene_lists/tfs.txt, label: "Transcription factors"}
+```
+
+Relative paths are relative to `root`, by default the working directory.
+
+```{r app, eval = FALSE}
+run_scmarco("config.yaml")
+```
+
+`scmarco_app()` returns the app object instead, for an `app.R` file on a Shiny
+server: `scMarco::scmarco_app("config.yaml")`.
+
+# Session information
+
+```{r session}
+sessionInfo()
+```
+
+# References

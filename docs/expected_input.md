@@ -1,8 +1,7 @@
 # Expected input
 
 This spec covers building a new scMarco dataset. There are two steps, both R
-functions in `script/lib_build.R`, loaded with
-`source("script/load.R", chdir = TRUE)`:
+functions of the scMarco package (`library(scMarco)`):
 
 1. **Build** (`seurat_to_h5ad()`): a Seurat object →
    `<id>.clusters.h5ad` (no probabilities yet) + `<id>.cells.h5ad`.
@@ -65,8 +64,8 @@ named.
 `exclude_clusters = "0"` drops the cells of the listed cluster IDs before
 anything else, e.g. cells the study discarded but kept in the object.
 
-Name rules, checked with actionable errors (`check_labels()` in `script/lib_import.R`;
-`validate_h5ad()` in `script/lib_validate.R` checks them again):
+Name rules, checked with actionable errors (`check_labels()` in `R/import.R`;
+`validate_h5ad()` in `R/validate.R` checks them again):
 
 - no empty or missing value in either label;
 - no `|`, because the files use `"<split>|<cluster>"` and `"<split>|<barcode>"`
@@ -292,7 +291,13 @@ The output is described fully in the README ("Data format"). In short:
 | State | Has `layers/prob` | `uns/scmarco/binarization` | Validator | App |
 |---|---|---|---|---|
 | *built* | no | absent | `validate_h5ad(stage = "built")` passes | **refuses to start** |
-| *binarized* | yes | `method`, `source` (the `prob` files, `<table>` for one passed in memory), `date` | `validate_h5ad()` passes | loads |
+| *binarized* | yes | `method`, `source` (the `prob` files, `<table>` for one passed in memory), `date`, `version` | `validate_h5ad()` passes | loads |
+
+`uns/scmarco/format_version` is the schema version; the app refuses a file
+with another one. `uns/scmarco/binarization/version` is the binarizer version,
+for information: it is bumped when a fix changes the probabilities, so a
+dataset with an older one needs `add_probability()` rerun. Files binarized
+before it was added lack it, and the validator does not require it.
 
 Migrated legacy datasets are binarized from the start. Their `uns/scmarco/source`
 records where they came from, e.g. `sqlite:db.sqlite:ozel_2021_new`.

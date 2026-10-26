@@ -1,6 +1,3 @@
-root <- file.path(testthat::test_path(), "..", "..")
-source(file.path(root, "src", "plot_core.R"))
-
 test_that("per-split reductions are grouped by reduction name", {
   keys <- c("X_umap_full", "X_ANm", "X_P15_tsne", "X_Adult_tsne", "X_P15", "X_A_B_tsne")
   groups <- split_reductions(keys, c("P15", "Adult", "A", "A_B"))

@@ -1,9 +1,4 @@
-root <- file.path(testthat::test_path(), "..", "..")
-source(file.path(root, "src", "combo_core.R"))
-source(file.path(root, "src", "backend_h5ad.R"))
-suppressMessages(source(file.path(root, "script", "lib_write_h5ad.R")))
-
-fixture <- file.path(root, "tests", "fixtures", "example.clusters.h5ad")
+fixture <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 
 test_that("the SQLite-derived fixture loads as a dataset", {
   ds <- ds_load("example", list(label = "Example", clusters = fixture))
@@ -72,6 +67,17 @@ test_that("the config check rejects a split_order that is not the file's splits"
   for (bad in list(splits[-1], c(splits, "Extra"), c(splits[1], splits))) {
     expect_error(ds_check_config(list(a = list(clusters = fixture, split_order = bad))),
                  "split_order must list each split")
+  }
+})
+
+test_that("the config check rejects a file in another format_version", {
+  for (v in c("1.0", "3.0")) {
+    path <- tempfile(fileext = ".clusters.h5ad")
+    file.copy(fixture, path)
+    rhdf5::h5delete(path, "uns/scmarco/format_version")
+    rhdf5::h5write(v, path, "uns/scmarco/format_version")
+    expect_error(ds_check_config(list(a = list(clusters = path))),
+                 if (v == "1.0") "rebuild the dataset" else "update scMarco")
   }
 })
 

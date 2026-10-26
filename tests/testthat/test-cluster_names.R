@@ -1,6 +1,3 @@
-root <- normalizePath(file.path(testthat::test_path(), "..", ".."))
-suppressMessages(source(file.path(root, "script", "load.R"), chdir = TRUE))
-
 make_legacy_pair <- function(dir) {
   # Two splits; labels embed IDs the legacy way, and one cluster is unnamed
   clusters <- c("12", "Mi4 (154)", "Tm27(Y) (9)")
@@ -39,7 +36,7 @@ test_that("labels show name (id), or the bare ID when unnamed", {
 })
 
 test_that("a dataset without names uses its IDs as labels", {
-  fixture <- file.path(root, "tests", "fixtures", "example.clusters.h5ad")
+  fixture <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
   ds <- ds_load("example", list(label = "Example", clusters = fixture))
   expect_true(all(is.na(ds$cluster_names)))
   expect_equal(unname(ds$cluster_labels), ds$clusters)

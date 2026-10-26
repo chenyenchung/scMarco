@@ -1,10 +1,4 @@
-root <- file.path(testthat::test_path(), "..", "..")
-source(file.path(root, "src", "combo_core.R"))
-source(file.path(root, "src", "backend_h5ad.R"))
-source(file.path(root, "src", "plot_core.R"))
-source(file.path(root, "src", "ui_helpers.R"))
-
-fixture <- file.path(root, "tests", "fixtures", "example.clusters.h5ad")
+fixture <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 
 layer_geoms <- function(p) vapply(p$layers, function(l) class(l$geom)[1], "")
 

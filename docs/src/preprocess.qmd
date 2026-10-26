@@ -13,7 +13,7 @@ This will render a data.frame where each row is a gene while each column is a cl
 ```{r}
 # A subset of data retrieved from Ozel et al. (2021)
 lognorm <- read.csv(
-  "../../example/data/log_norm/Adult.csv",
+  "../../deploy/example/data/log_norm/Adult.csv",
   row.names = 1,
   check.names = FALSE
 )
@@ -90,7 +90,7 @@ Now, we have the average expression data in the database. Similar process can be
 ```{r}
 # A subset of data retrieved from Ozel et al. (2021)
 mm <- read.csv(
-  "../../example/data/mixture_model/Adult.csv",
+  "../../deploy/example/data/mixture_model/Adult.csv",
   row.names = 1,
   check.names = FALSE
 )

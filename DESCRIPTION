@@ -1,0 +1,57 @@
+Package: scMarco
+Type: Package
+Title: Select marker gene combinations from binarized single-cell expression
+Version: 0.99.0
+Authors@R:
+    person("Yen-Chung", "Chen", email = "chenyenjung@gmail.com",
+           role = c("aut", "cre"))
+Description: Helps choose combinations of marker genes, such as split-GAL4
+    driver pairs, that label one cell type of a single-cell RNA-seq dataset
+    and as few others as possible. Gene expression is binarized per cluster
+    with a Bayesian mixture model, so that each gene is ON, OFF or ambiguous
+    in each cluster and in each split of the data (stage, sex, species).
+    scMarco ranks single genes and gene pairs by their off-target clusters,
+    finds genes that tell apart a set of clusters, and plots co-expression,
+    expression trends, UMAPs and the mixture-model fits, both from R and in an
+    interactive Shiny app. Datasets are stored as AnnData (h5ad) files and
+    can be built from Seurat objects.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.5.0)
+Imports:
+    anndataR,
+    bslib,
+    cowplot,
+    ggplot2,
+    ggrepel,
+    markdown,
+    Matrix,
+    methods,
+    plotly,
+    rhdf5,
+    shiny,
+    shinybusy,
+    stats,
+    tools,
+    utils,
+    viridisLite,
+    yaml
+Suggests:
+    BiocStyle,
+    DBI,
+    knitr,
+    rmarkdown,
+    RSQLite,
+    SeuratObject,
+    testthat (>= 3.0.0)
+SystemRequirements: HDF5 command line tools (h5repack), optional, to
+    re-chunk the files written by the dataset builders
+biocViews: Software, SingleCell, GeneExpression, Transcriptomics,
+    Visualization, ShinyApps, Clustering
+URL: https://github.com/chenyenchung/scMarco
+BugReports: https://github.com/chenyenchung/scMarco/issues
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.1.1

@@ -4,11 +4,18 @@
 rsconnect/*
 app_cache
 int/*
-data/*.h5ad
-data/*.h5
+deploy/data/*.h5ad
+deploy/data/*.h5
 *.sqlite
 .venv/
 renv/library/
 renv/staging/
 renv/local/
-tests/parity/out/
+deploy/tests/parity/out/
+# package build artifacts
+*.tar.gz
+*.Rcheck/
+*.BiocCheck/
+inst/doc
+/doc/
+/Meta/

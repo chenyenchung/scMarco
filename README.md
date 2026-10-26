@@ -1,38 +1,57 @@
-# scMarco (harmonized)
+# scMarco
 
-A Shiny app for selecting marker gene combinations from mixture-model
-binarized scRNA-seq expression. This codebase merges the two earlier forks:
+An R package and Shiny app for selecting marker gene combinations from
+mixture-model binarized scRNA-seq expression. This codebase merges the two
+earlier forks:
 
 - `scMarco` (optic lobe): SQLite backend, ordered stages, expression-trend plot;
 - `scMarco-Ding-lab` (dsx neurons): HDF5 backend, sex/species splits, UMAPs,
   % positive overlays, non-bimodal gene handling.
 
 Every lab runs the same code with its own `config.yaml` and data folder. Tabs
-appear only when a dataset has the data they need.
+appear only when a dataset has the data they need. The searches and plots
+behind the app can also be used from R; see `vignette("scMarco")`.
+
+## Installing
+
+```r
+# install.packages("BiocManager")
+BiocManager::install("chenyenchung/scMarco")
+```
+
+For development, `renv::restore()` restores the pinned library and
+`R CMD INSTALL .` installs the package from a checkout.
 
 ## Running
 
-```sh
-# once: restore the R library (renv)
-Rscript -e 'renv::restore()'
+```r
+library(scMarco)
+run_scmarco("config.yaml")          # paths in the config relative to the working directory
+run_scmarco("lab.yaml", root = "/srv/scmarco")
+```
 
-# run an instance
+The lab instances live in `deploy/` (not part of the package): `app.R`,
+the configs, their README files, gene lists and the (git-ignored) data.
+
+```sh
+cd deploy
 SCMARCO_CONFIG=configs/optic_lobe.yaml Rscript -e 'shiny::runApp(".")'
 SCMARCO_CONFIG=configs/dinglab.yaml    Rscript -e 'shiny::runApp(".")'
 Rscript -e 'shiny::runApp(".")'        # config.yaml: every dataset
 ```
 
 For deployment (e.g. shinyapps.io), copy the lab's config to `config.yaml`
-and ship its `data/*.h5ad` files alongside the app.
+and ship `app.R`, `readme/`, `gene_lists/` and its `data/*.h5ad` files;
+`app.R` is `scMarco::scmarco_app()`, so the server needs the package.
 
 ## Config
 
 ```yaml
 title: "scMarco"
 theme: minty                 # any bootswatch theme
-readme:                      # Markdown files shown in "Read Me", in order
-  - readme/optic_lobe.md
-  - readme/usage.md
+readme:                      # Markdown files shown in "Read Me", in order,
+  - readme/optic_lobe.md     # followed by the packaged usage guide
+usage_guide: true            # false: leave the usage guide out
 datasets:
   ozel_2021:                 # id
     label: "Optic lobe, multiome annotation: ..."
@@ -66,7 +85,7 @@ that exists.
 | `layers/prob` | mixture-model probability of expression (NaN = not modeled / non-bimodal) |
 | `layers/pct_pos` | optional fraction of cells with > 0 UMIs |
 | `layers/mean_lognorm` | optional cluster-average log-normalized expression (trend plot) |
-| `uns/scmarco` | `format_version`, `split_label`, `split_order`, `ordered_splits`, `source` |
+| `uns/scmarco` | `format_version`, `split_label`, `split_order`, `ordered_splits`, `source`, `binarization` (`method`, `source`, `date`, `version`) once binarized |
 
 A cluster absent from a split simply has no row, so missing values never mean
 two things.
@@ -89,15 +108,11 @@ co-expression percentage.
 
 Files are written with anndataR and then re-chunked with `h5repack`, so
 per-gene reads touch only small blocks. The app reads them with a small rhdf5
-reader (`src/backend_h5ad.R`); Python is not needed at runtime.
+reader (`R/backend_h5ad.R`); Python is not needed at runtime.
 
-## Building datasets (`script/`)
+## Building datasets
 
-New datasets are built and edited with R functions. Load them with:
-
-```r
-source("script/load.R", chdir = TRUE)
-```
+New datasets are built and edited with the package's functions:
 
 | function | use |
 |---|---|
@@ -112,29 +127,36 @@ source("script/load.R", chdir = TRUE)
 | `h5v1_to_h5ad()` | migrate a legacy scMarco-Ding-lab `db.h5` dataset |
 | `find_pairs()` | offline ranking of marker pairs for every cluster (table with `cluster` ID and `cluster_name`; `out` also writes a CSV) |
 
-Each function documents its arguments at the top of its body:
-`script/lib_build.R` (build, binarize, cluster names), `script/lib_migrate.R`
-(legacy sources) and `script/lib_pairs.R`. Inputs can be file paths or objects
-already in memory. `script/misc/` holds one-off helpers for specific
-datasets; `source()` one after `load.R` when needed. Building needs the HDF5
-command-line tools (`h5repack`) for re-chunking.
+Each function has a help page (`?seurat_to_h5ad`). Inputs can be file paths
+or objects already in memory. `deploy/misc/` holds one-off helpers for
+specific datasets; `source()` one after `library(scMarco)` when needed.
+Building needs the HDF5 command-line tools (`h5repack`) for re-chunking.
 
 ## Code layout
 
-| file | role |
+| path | role |
 |---|---|
-| `src/combo_core.R` | pure combination logic (From cluster, From gene, distinct genes, pairs); unit tested |
-| `src/backend_h5ad.R` | h5ad reader and per-process dataset cache |
-| `src/plot_core.R` | On/Off, co-expression, trend and UMAP plots |
-| `src/module_*.R` | one Shiny module per tab |
-| `app.R` | config, sidebar (dataset, genes, clusters, threshold, split criteria), tab gating |
+| `R/combo_core.R` | pure combination logic (From cluster, From gene, distinct genes, pairs) |
+| `R/backend_h5ad.R` | h5ad reader and per-process dataset cache |
+| `R/plot_core.R` | On/Off, co-expression, trend and UMAP plots |
+| `R/module_*.R` | one Shiny module per tab |
+| `R/app.R` | config, sidebar (dataset, genes, clusters, threshold, split criteria), tab gating |
+| `R/build.R`, `R/import.R`, `R/write_h5ad.R`, `R/validate.R` | building, binarizing, annotating and checking datasets |
+| `R/migrate.R`, `R/pairs.R` | legacy converters; offline pair ranking |
+| `inst/extdata/` | example datasets (`inst/scripts/` regenerates them) |
+| `vignettes/` | the package vignette |
+| `deploy/` | lab instances, data and data-dependent checks (not in the package) |
+| `docs/` | the user guide website (Quarto) |
 
 ## Tests
 
 ```sh
-Rscript -e 'testthat::test_dir("tests/testthat")'              # unit tests (fixtures only)
-SCMARCO_CONFIG=configs/all.yaml Rscript tests/integration/app_flow.R  # full workflow per dataset
-Rscript tests/parity/parity.R ../scMarco ../scMarco-Ding-lab    # vs. legacy implementations
+Rscript -e 'testthat::test_local()'                 # unit tests (package fixtures only)
+R CMD build . && R CMD check scMarco_*.tar.gz       # full package check
+Rscript -e 'BiocCheck::BiocCheck("scMarco_0.99.0.tar.gz")'
+cd deploy                                           # needs the converted data:
+SCMARCO_CONFIG=configs/all.yaml Rscript tests/integration/app_flow.R
+Rscript tests/parity/parity.R ../../scMarco ../../scMarco-Ding-lab
 ```
 
 ## Behavior changes from the legacy forks

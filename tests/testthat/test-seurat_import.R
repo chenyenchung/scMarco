@@ -1,6 +1,3 @@
-root <- normalizePath(file.path(testthat::test_path(), "..", ".."))
-suppressMessages(source(file.path(root, "script", "load.R"), chdir = TRUE))
-
 run_quietly <- function(expr) {
   #' Evaluate expr, returning its messages as one string
   msgs <- character(0)
@@ -35,6 +32,7 @@ female_prob <- function() prob_table(
 )
 
 toy_seurat <- function(dir, legacy_idents = FALSE) {
+  skip_if_not_installed("SeuratObject")
   suppressPackageStartupMessages(library(SeuratObject))
   set.seed(1)
   n <- 40
@@ -111,6 +109,7 @@ test_that("build from metadata columns, then binarize from per-split files", {
   expect_equal(ds$cluster_labels[["1"]], "Mi4 (1)")
   meta <- ds$clusters_h$uns$scmarco
   expect_equal(meta$binarization$method, "mixture model")
+  expect_equal(meta$binarization$version, SCMARCO_BINARIZER_VERSION)
   expect_equal(meta$binarization$source, sprintf("Male=%s,Female=%s", file.path(dir, "male.rds"),
                                                  file.path(dir, "female.rds")))
   expect_equal(meta$split_label, "sex")
