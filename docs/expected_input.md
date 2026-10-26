@@ -189,9 +189,25 @@ UMAP split by sex.
 ## 2. Mixture-model probabilities (binarize step)
 
 One probability per gene × split × cluster: the posterior that the gene is
-in the "ON" component of the mixture model
+in the "ON" component of the mixture model, plus whether each gene is bimodal.
+
+The binarizer ships with the package (Suggests: rstan, mclust, matrixStats).
+Per split, `fit_mixture()` fits each gene's log-normalized expression across
+pseudobulk samples (each cluster's cells pooled into a few replicates) and
+`call_mixture()` turns the fits into the table described in 2a. Fit chunks of
+genes in parallel jobs and join them with `merge_mixture_fits()`. Fits are
+seeded per gene (`seed = 42`), so they do not depend on the chunking:
+
+```r
+fit <- fit_mixture(lognorm, cluster = meta$cluster, replicate = meta$replicate)
+add_probability("data/<id>.clusters.h5ad", list(Male = call_mixture(fit), ...))
+```
+
+It adapts Fred P. Davis's mixture model and code
+([opticlobe](https://github.com/fredpdavis/opticlobe), Davis et al. 2020) through
+the mixture-model pipeline
 ([mixture_modeling_smk](https://github.com/chenyenchung/mixture_modeling_smk)),
-plus whether each gene is bimodal.
+and tables from that pipeline are read the same way.
 
 ### 2a. One table per split (preferred)
 
@@ -235,7 +251,9 @@ is bimodal in at least one split.
 
 When every table has `bimodal.on_level`, `bimodal.off_level`, `bimodal.sd` and
 `bimodal.pi`, they are stored per gene × split in `varm/mixture_on_level`,
-`varm/mixture_off_level`, `varm/mixture_sd` and `varm/mixture_pi`. The app's
+`varm/mixture_off_level`, `varm/mixture_sd` and `varm/mixture_pi`, as given:
+`call_mixture()` writes them unrounded, so the curves are exact; the older
+pipeline rounded them to 2 decimals. The app's
 Mixture model tab draws them: the distribution of cluster averages with the two
 fitted Gaussians, and the P(On) curve with the clusters of interest marked. If
 any table lacks them, a warning is given and the tab is hidden.

@@ -1,6 +1,7 @@
 MIT License
 
-Copyright (c) 2023 Yen-Chung Chen
+Copyright (c) 2023-2026 Yen-Chung Chen
+Copyright (c) 2018-2020 Fred P. Davis (mixture model code; see inst/COPYRIGHTS)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

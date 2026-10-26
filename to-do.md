@@ -15,6 +15,10 @@ are specified in [`docs/expected_input.md`](docs/expected_input.md).
 - [ ] Register `chenyenjung@gmail.com` on https://support.bioconductor.org and
   add the `scmarco` watched tag (the one BiocCheck ERROR), and subscribe to
   bioc-devel.
+- [x] **Binarizer license**: Fred P. Davis permitted the adaptation of his
+  opticlobe code and its MIT licensing (email, 2026-10-26, archived). He is
+  `ctb`, `cph` in `Authors@R`; notices in the file headers, `LICENSE`,
+  `LICENSE.md` and `inst/COPYRIGHTS`.
 - [ ] Optional: ORCID iD in `Authors@R`; `fnd` role for funding.
 - [ ] Consider an interface from `SingleCellExperiment` (reviewers tend to ask
   for interoperability with Bioconductor classes): e.g. build a dataset from
@@ -100,9 +104,9 @@ scope. Both converters are in `R/migrate.R`.
   schema in place. Then point the "rebuild the dataset" message of
   `ds_check_config()` (`format_problem()` in `R/backend_h5ad.R`) at it.
 
-- [ ] **smk pipeline helper** for
-  [mixture_modeling_smk](https://github.com/chenyenchung/mixture_modeling_smk):
-  export the pipeline's inputs from a *built* dataset, run or submit the
-  pipeline, and import its output through `add_probability()`, which
-  already reads the pipeline's per-split tables as they are, so this helper
-  needs no new import format. The export format still has to be confirmed against the pipeline.
+- [ ] **Binarizer input**: the mixture model is now in the package
+  (`fit_mixture()`, `call_mixture()`), but its input, log-normalized
+  pseudobulk replicates of each cluster, is still made outside it
+  (mm_marker's `get_input.R`: `Seurat::AggregateExpression()` on each cluster's
+  cells split into two halves by library). Add a SeuratObject-only helper, and
+  a way to run gene chunks as parallel jobs.

@@ -194,7 +194,9 @@ New datasets are built in two steps:
 
 1. `seurat_to_h5ad()` writes both files from a Seurat object whose metadata
    holds each cell's split and cluster ID (or one object per split);
-2. the mixture model [@davis2020] is fit outside R, for example with the
+2. the mixture model of @davis2020 (adapted from its
+   [opticlobe](https://github.com/fredpdavis/opticlobe) code) is fit per split
+   with `fit_mixture()` and called with `call_mixture()`, or outside R with the
    [mixture_modeling_smk](https://github.com/chenyenchung/mixture_modeling_smk)
    pipeline, and `add_probability()` adds its output, one table per split.
 

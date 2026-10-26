@@ -3,8 +3,10 @@ Type: Package
 Title: Select marker gene combinations from binarized single-cell expression
 Version: 0.99.0
 Authors@R:
-    person("Yen-Chung", "Chen", email = "chenyenjung@gmail.com",
-           role = c("aut", "cre"))
+    c(person("Yen-Chung", "Chen", email = "chenyenjung@gmail.com",
+             role = c("aut", "cre")),
+      person("Fred P.", "Davis", role = c("ctb", "cph"),
+             comment = "author and copyright holder of the original mixture model code (opticlobe), adapted in R/mixture_fit.R and inst/stan/; see inst/COPYRIGHTS"))
 Description: Helps choose combinations of marker genes, such as split-GAL4
     driver pairs, that label one cell type of a single-cell RNA-seq dataset
     and as few others as possible. Gene expression is binarized per cluster
@@ -28,6 +30,7 @@ Imports:
     markdown,
     Matrix,
     methods,
+    parallel,
     plotly,
     rhdf5,
     shiny,
@@ -41,7 +44,10 @@ Suggests:
     BiocStyle,
     DBI,
     knitr,
+    matrixStats,
+    mclust,
     rmarkdown,
+    rstan,
     RSQLite,
     SeuratObject,
     testthat (>= 3.0.0)

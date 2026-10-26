@@ -635,13 +635,24 @@ umap_size <- function(n_splits, facet, ncol = 2) {
 
 MIXTURE_COLORS <- c("OFF" = "#2a78d6", "ON" = "#eb6834")
 
-# The pipeline rounds parameters to 2 decimals, so a stored 0 means < 0.005
+# call_mixture() keeps the fit parameters exact. Tables from the older
+# pipeline rounded them to 2 decimals, so there a stored SD of 0 or ON weight
+# of 0 or 1 means within 0.005 of it, and is drawn at that distance.
 MIXTURE_FLOOR <- 0.005
+
+mixture_floored <- function(fit) {
+    # fit with a rounded-away SD or ON weight replaced by MIXTURE_FLOOR
+    if (fit$sd == 0) fit$sd <- MIXTURE_FLOOR
+    if (fit$pi == 0) fit$pi <- MIXTURE_FLOOR
+    if (fit$pi == 1) fit$pi <- 1 - MIXTURE_FLOOR
+    fit
+}
 
 mixture_p_on <- function(x, fit) {
     # P(On | x) for two Gaussians with a shared SD: a logistic curve in x
-    sd <- max(fit$sd, MIXTURE_FLOOR)
-    pi_on <- min(max(fit$pi, MIXTURE_FLOOR), 1 - MIXTURE_FLOOR)
+    fit <- mixture_floored(fit)
+    sd <- fit$sd
+    pi_on <- fit$pi
     slope <- (fit$on_level - fit$off_level) / sd^2
     plogis(qlogis(pi_on) + slope * (x - (fit$on_level + fit$off_level) / 2))
 }
@@ -684,9 +695,8 @@ mixture_plot <- function(ds, gene, model, highlight = character(0), margin = 0.5
     if (is.null(avg)) return(message_plot("No cluster averages for this dataset."))
     scale_note <- attr(avg, "scale")
     avg <- avg[!is.na(avg$value), , drop = FALSE]
-    sd <- max(fit$sd, MIXTURE_FLOOR)
-    floored <- fit$sd < MIXTURE_FLOOR || fit$pi < MIXTURE_FLOOR ||
-        fit$pi > 1 - MIXTURE_FLOOR
+    floored <- !identical(mixture_floored(fit), fit)
+    sd <- mixture_floored(fit)$sd
 
     centers <- c(fit$off_level, fit$on_level)
     lims <- range(c(avg$value, centers - 3 * sd, centers + 3 * sd, 0))
@@ -777,8 +787,8 @@ mixture_plot <- function(ds, gene, model, highlight = character(0), margin = 0.5
         } else {
             "Dotted line: ON above P(On) = 0.50."
         },
-        if (floored) sprintf("Parameters are stored to 2 decimals; values below %.3f were drawn as %.3f.",
-            MIXTURE_FLOOR, MIXTURE_FLOOR),
+        if (floored) sprintf(paste("Parameters were stored rounded to 2 decimals; a SD or ON weight",
+            "rounded to 0 (or a weight to 1) was drawn %.3f from it."), MIXTURE_FLOOR),
         if (length(absent) > 0) {
             lbl <- cluster_label(ds, absent)
             paste0("Not in ", where, ": ",

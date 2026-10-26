@@ -1,0 +1,43 @@
+scMarco copyright and attribution
+=================================
+
+Unless noted below, scMarco is
+Copyright (c) 2023-2026 Yen-Chung Chen
+and released under the MIT license (see LICENSE).
+
+
+Mixture-model binarizer
+-----------------------
+
+Files:
+    R/mixture_fit.R
+    inst/stan/bimodal.stan
+    inst/stan/bimodal_cv.stan
+    inst/stan/unimodal.stan
+    inst/stan/unimodal_cv.stan
+
+These files adapt the mixture model, the Stan code (level1_ordered.stan,
+level1_ordered_CV.stan, level1_unimodal.stan, level1_unimodal_CV.stan) and the
+expression-calling logic of Fred P. Davis's opticlobe code:
+
+    https://github.com/fredpdavis/opticlobe
+    Copyright (c) 2018-2020 Fred P. Davis
+
+published with
+
+    Davis FP, Nern A, Picard S, et al. (2020). A genetic, genomic, and
+    computational resource for exploring neural circuit function. eLife
+    9:e50901. https://doi.org/10.7554/eLife.50901
+
+by way of the mm_marker / mixture_modeling_smk pipeline
+(https://github.com/chenyenchung/mixture_modeling_smk).
+
+The opticlobe repository carries no license. On 2026-10-26 Fred P. Davis gave
+written permission (email to Yen-Chung Chen, archived by the maintainer) for
+this adaptation and for its release under the MIT license. The adaptation is
+Copyright (c) 2023-2026 Yen-Chung Chen, and the whole is distributed under the
+MIT license of scMarco.
+
+Changes from opticlobe include a reimplementation in R around rstan and a fix
+to the held-out elpd, which here averages each sample's likelihood over the
+posterior draws (https://github.com/fredpdavis/opticlobe/pull/1).
