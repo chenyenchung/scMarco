@@ -44,6 +44,19 @@ test_that("the trend view defaults to line for ordered splits and follows the co
   expect_equal(ds$trend, "both")
 })
 
+test_that("split labels get a plural that reads right", {
+  expect_equal(plural_label("stage"), "stages")
+  expect_equal(plural_label("sex"), "sexes")
+  expect_equal(plural_label("species"), "species")
+  expect_equal(plural_label("batch"), "batches")
+  ds <- ds_load("example_plural", list(label = "Example", clusters = fixture))
+  expect_equal(ds$split_plural, "stages")
+  ds <- ds_load("example_plural2", list(label = "Example", clusters = fixture,
+                                        split_label = "genotype",
+                                        split_label_plural = "genotypes tested"))
+  expect_equal(ds$split_plural, "genotypes tested")
+})
+
 test_that("the config check rejects trend views the files cannot back", {
   expect_silent(ds_check_config(list(a = list(clusters = fixture, trend = "line"))))
   expect_error(ds_check_config(list(a = list(clusters = fixture, trend = "lines"))),
@@ -51,6 +64,15 @@ test_that("the config check rejects trend views the files cannot back", {
   # The fixture has no cells file
   expect_error(ds_check_config(list(a = list(clusters = fixture, trend = "box"))),
                "needs a cells file")
+})
+
+test_that("the config check rejects a split_order that is not the file's splits", {
+  splits <- c("P15", "P30", "P40", "P50", "P70", "Adult")
+  expect_silent(ds_check_config(list(a = list(clusters = fixture, split_order = rev(splits)))))
+  for (bad in list(splits[-1], c(splits, "Extra"), c(splits[1], splits))) {
+    expect_error(ds_check_config(list(a = list(clusters = fixture, split_order = bad))),
+                 "split_order must list each split")
+  }
 })
 
 make_pair <- function(dir) {
@@ -120,4 +142,15 @@ test_that("a written pair round-trips through the reader", {
   b <- ds_binarize(ds, 0.5)
   expect_false(b$present["y", "M"])
   expect_false(any(b$on["c", , ]))
+})
+
+test_that("unordered splits with a cells file get the box view by default", {
+  dir <- withr::local_tempdir()
+  suppressMessages(suppressWarnings(p <- make_pair(dir)))
+  ds <- ds_load("toy_view", list(label = "Toy", clusters = p$clusters, cells = p$cells))
+  expect_false(ds$ordered_splits)
+  expect_equal(ds$trend, "box")
+  ds <- ds_load("toy_view2", list(label = "Toy", clusters = p$clusters, cells = p$cells,
+                                  trend = "line"))
+  expect_equal(ds$trend, "line")
 })

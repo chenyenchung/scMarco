@@ -61,9 +61,9 @@ find_distinct_server <- function(id, ctx, coexp_session) {
             "No distinctive genes found",
             HTML(paste0(
               "<p>No gene distinguishes the selected clusters. ",
-              describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$scope()),
+              describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$split_plural(), ctx$scope()),
               "</p><p>Try a larger confidence margin, fewer required ",
-              ctx$split_label(), "s, different clusters, or a broader gene list.</p>"
+              ctx$split_plural(), ", different clusters, or a broader gene list.</p>"
             ))
           )
           if (!ok) return(NULL)

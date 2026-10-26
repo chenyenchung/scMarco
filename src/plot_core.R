@@ -283,9 +283,12 @@ box_layers <- function(stats, fill = "#CCCCCC") {
 
 trend_plot <- function(ds, gene, highlight = character(0), lowlight_alpha = 0.2,
                        interactive = TRUE, box = FALSE) {
-  #' box: draw the per-split box plot of all cells behind the lines
+  #' box: draw the per-split box plot of all cells behind the averages.
+  #' Cluster averages are joined by lines across ordered splits only; across
+  #' unordered ones (sex, species) a line would invent a trend, so they are
+  #' drawn as points.
   df <- ds_cluster_layer_long(ds, "mean_lognorm", gene)
-  df <- df[!is.na(df$value), , drop = FALSE]
+  df <- df[!is.na(df$value) & df$split %in% ds$splits, , drop = FALSE]
   if (nrow(df) == 0) return(message_plot("Gene not found."))
   df$split <- factor(df$split, levels = ds$splits)
   df$highlight <- df$cluster %in% highlight
@@ -293,16 +296,22 @@ trend_plot <- function(ds, gene, highlight = character(0), lowlight_alpha = 0.2,
   highlight <- cluster_label(ds, highlight)
   df <- df[order(df$highlight), ]
   back <- if (box) box_layers(box_stats(ds, gene), fill = "#EEEEEE")
+  averages <- function(mapping) {
+    if (ds$ordered_splits) return(geom_line(mapping))
+    geom_point(mapping, size = 2,
+               position = position_jitter(width = 0.15, height = 0, seed = 1))
+  }
+  x_title <- tools::toTitleCase(ds$split_label)
 
   if (interactive) {
     p <- ggplot(df, aes(x = split, y = value, group = cluster, text = cluster_label)) +
       back +
-      geom_line(aes(color = highlight, alpha = highlight)) +
+      averages(aes(color = highlight, alpha = highlight)) +
       scale_color_manual(values = c(`FALSE` = "#333333", `TRUE` = "#C0392B"),
                          guide = "none") +
       scale_alpha_manual(values = c(`FALSE` = lowlight_alpha, `TRUE` = 1),
                          guide = "none") +
-      labs(x = NULL, y = "Log-normalized expression", title = gene) +
+      labs(x = x_title, y = "Log-normalized expression", title = gene) +
       cowplot::theme_cowplot()
     return(plotly::ggplotly(p, tooltip = c("text", "y")))
   }
@@ -313,12 +322,14 @@ trend_plot <- function(ds, gene, highlight = character(0), lowlight_alpha = 0.2,
   names(colors) <- c(highlight, "Others")
   ggplot(df, aes(x = split, y = value, group = cluster)) +
     back +
-    geom_line(aes(color = label, alpha = highlight)) +
+    averages(aes(color = label, alpha = highlight)) +
     scale_color_manual(values = colors, name = NULL) +
     scale_alpha_manual(values = c(`FALSE` = lowlight_alpha, `TRUE` = 1),
                        guide = "none") +
-    labs(x = NULL, y = "Log-normalized expression", title = gene,
-         subtitle = if (box) "Boxes: every cell; lines: cluster averages") +
+    labs(x = x_title, y = "Log-normalized expression", title = gene,
+         subtitle = if (box) paste0("Boxes: every cell; ",
+                                    if (ds$ordered_splits) "lines" else "points",
+                                    ": cluster averages")) +
     cowplot::theme_cowplot()
 }
 
@@ -333,7 +344,8 @@ box_plot <- function(ds, gene, highlight = character(0), interactive = TRUE) {
     box_layers(stats) +
     facet_wrap(~panel, ncol = min(nlevels(stats$panel), 3)) +
     scale_x_discrete(drop = FALSE) +
-    labs(x = NULL, y = "Log-normalized expression", title = gene) +
+    labs(x = tools::toTitleCase(ds$split_label), y = "Log-normalized expression",
+         title = gene) +
     cowplot::theme_cowplot() +
     theme(strip.background = element_rect(color = "black", fill = "white"),
           axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
@@ -417,6 +429,14 @@ square_extents <- function(df, by_split = TRUE) {
   }))
 }
 
+split_color_scale <- function(ds, ...) {
+  #' Colors for splits: sequential for ordered splits, qualitative otherwise
+  #' (Set1 has 9 colors; more splits fall back to evenly spaced hues)
+  if (ds$ordered_splits) return(scale_color_viridis_d(..., end = 0.9))
+  if (length(ds$splits) <= 9) return(scale_color_brewer(palette = "Set1", ...))
+  scale_color_hue(...)
+}
+
 umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
                       gene = NULL, splits = ds$splits, facet = FALSE,
                       show_legend = FALSE, ncol = NULL) {
@@ -449,7 +469,7 @@ umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
   keep <- !is.na(df$dim1) & df$split %in% splits
   df <- df[keep, , drop = FALSE]
   if (nrow(df) == 0) {
-    return(message_plot("No cells in this reduction for the selected splits."))
+    return(message_plot(paste0("No cells in this reduction for the selected ", ds$split_plural, ".")))
   }
   split_label <- tools::toTitleCase(ds$split_label)
   title <- if (per_split) {
@@ -475,7 +495,7 @@ umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
   } else if (color_by == "split") {
     ggplot(df, aes(dim1, dim2, color = split)) +
       geom_point(size = 0.8, alpha = 0.7) +
-      scale_color_brewer(palette = "Set1", name = split_label)
+      split_color_scale(ds, name = split_label)
   } else {
     q <- ggplot(df, aes(dim1, dim2, color = cluster)) +
       geom_point(size = 0.8, alpha = 0.7)

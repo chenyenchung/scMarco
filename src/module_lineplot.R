@@ -49,7 +49,7 @@ lineplot_server <- function(id, ctx) {
         input$do_lineplot, {
           ok <- require_or_modal(
             nzchar(input$gene_of_interest),
-            "Please select a gene", "Select a gene to plot its expression trend."
+            "Please select a gene", "Select a gene to plot its expression."
           )
           if (!ok) return(NULL)
           ds <- ctx$ds()
@@ -75,7 +75,7 @@ lineplot_server <- function(id, ctx) {
           updateTabsetPanel(
             ctx$parent_session,
             inputId = "outputTabs",
-            selected = "Expression Trend"
+            selected = "Expression Levels"
           )
           output$cond_dl <- renderUI({ggdownload_UI(NS(id, "dl_lplot"))})
         }

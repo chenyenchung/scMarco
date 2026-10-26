@@ -272,16 +272,27 @@ meta_active <- function(filters) {
 
 .ds_cache <- new.env(parent = emptyenv())
 
-# Expression trend views a config may ask for: cluster averages across splits
-# (line, needs mean_lognorm), per-cell distributions (box, needs the cells
-# file), or both in one panel
+# Expression views a config may ask for: cluster averages per split (line,
+# needs mean_lognorm; drawn as lines only for ordered splits, as points
+# otherwise), per-cell distributions (box, needs the cells file), or both in
+# one panel
 TREND_MODES <- c("line", "box", "both")
 
-trend_mode <- function(entry, ordered_splits, has_mean) {
-  #' The trend view the config asks for; without one, ordered splits with
-  #' cluster averages get the line plot. NULL: no trend view.
+trend_mode <- function(entry, ordered_splits, has_mean, has_cells) {
+  #' The expression view the config asks for; without one, ordered splits
+  #' with cluster averages get the line plot and any other dataset with a
+  #' cells file the box plot. NULL: no expression view.
   if (!is.null(entry$trend)) return(entry$trend)
-  if (ordered_splits && has_mean) "line"
+  if (ordered_splits && has_mean) return("line")
+  if (has_cells) "box"
+}
+
+plural_label <- function(label) {
+  #' Default plural of a split label: "stage" -> "stages", "sex" -> "sexes";
+  #' a label already ending in "s" ("species") is kept as is
+  if (grepl("s$", label)) return(label)
+  if (grepl("(x|z|ch|sh)$", label)) return(paste0(label, "es"))
+  paste0(label, "s")
 }
 
 ds_check_config <- function(datasets) {
@@ -310,6 +321,16 @@ ds_check_config <- function(datasets) {
       }
       if (anyDuplicated(levels)) {
         problems <- c(problems, sprintf("- %s: subset_by lists a level more than once", id))
+      }
+      order <- as.character(unlist(datasets[[id]]$split_order))
+      if (length(order) > 0) {
+        splits <- as.character(h5read(path, "obs/split/categories"))
+        if (anyDuplicated(order) || !setequal(order, splits)) {
+          problems <- c(problems, sprintf(
+            "- %s: split_order must list each split of %s exactly once: %s",
+            id, path, paste(splits, collapse = ", ")
+          ))
+        }
       }
       trend <- datasets[[id]]$trend
       if (!is.null(trend)) {
@@ -403,6 +424,7 @@ ds_load <- function(id, entry) {
   pick <- function(x, default) if (is.null(x)) default else x
   ordered_splits <- isTRUE(pick(entry$ordered_splits, meta$ordered_splits))
   has_mean <- "mean_lognorm" %in% ch$layers
+  split_label <- pick(entry$split_label, pick(meta$split_label, "split"))
   ds <- list(
     id = id,
     label = entry$label,
@@ -424,11 +446,13 @@ ds_load <- function(id, entry) {
     all_genes = ch$genes,
     analysis_genes = analysis_genes,
     unimodal_genes = setdiff(ch$genes, analysis_genes),
-    split_label = pick(entry$split_label, pick(meta$split_label, "split")),
+    split_label = split_label,
+    split_plural = pick(entry$split_label_plural,
+                        pick(meta$split_label_plural, plural_label(split_label))),
     ordered_splits = ordered_splits,
     has_pct = "pct_pos" %in% ch$layers,
     has_mean = has_mean,
-    trend = trend_mode(entry, ordered_splits, has_mean),
+    trend = trend_mode(entry, ordered_splits, has_mean, !is.null(cells)),
     has_mixture = !is.null(mixture),
     reductions = if (is.null(cells)) character(0) else cells$obsm,
     binarized = new.env(parent = emptyenv())

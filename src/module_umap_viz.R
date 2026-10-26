@@ -81,13 +81,13 @@ umap_viz_server <- function(id, ctx) {
               ns = NS(id),
               ncol_slider(length(ctx$ds()$splits))
             ),
-            helpText("Cells are limited to the checked splits above; with none checked, all are shown.")
+            helpText(paste0("Cells are limited to the ", ctx$split_plural(), " checked above; with none checked, all are shown."))
           ))
         }
         # No shared reduction: each chosen split is drawn as its own panel
         tagList(
           selectizeInput(
-            NS(id, "shown_splits"), paste0(label(), "s to show:"),
+            NS(id, "shown_splits"), paste0(tools::toTitleCase(ctx$split_plural()), " to show:"),
             choices = names(keys), selected = names(keys), multiple = TRUE
           ),
           ncol_slider(length(keys))

@@ -22,13 +22,15 @@ with_spinner <- function(text, expr) {
   })
 }
 
-describe_splits <- function(required, min_n, split_label, scope = NULL) {
+describe_splits <- function(required, min_n, split_label, split_plural,
+                            scope = NULL) {
   req <- if (length(required) == 0) {
     ""
   } else {
     paste0(" ON in ", paste(required, collapse = " + "), " and")
   }
-  paste(c(sprintf("Criteria:%s ON in at least %d %s(s).", req, min_n, split_label),
+  what <- if (min_n == 1) split_label else split_plural
+  paste(c(sprintf("Criteria:%s ON in at least %d %s.", req, min_n, what),
           scope), collapse = " ")
 }
 

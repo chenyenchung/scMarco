@@ -53,7 +53,7 @@ find_pos_server <- function(id, ctx) {
             paste0(
               "No cluster expresses ", paste(input$gene, collapse = ", "),
               " with probability >= ", 1 - ctx$margin(), ". ",
-              describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$scope())
+              describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$split_plural(), ctx$scope())
             )
           )
           if (!ok) return()
@@ -73,7 +73,7 @@ find_pos_server <- function(id, ctx) {
         if (is.null(res)) return(NULL)
         tagList(
           tags$p(style = "margin: 10px",
-                 describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$scope())),
+                 describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$split_plural(), ctx$scope())),
           tags$h4(
             style = "margin: 10px",
             checkboxGroupInput(

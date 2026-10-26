@@ -31,6 +31,8 @@ seurat_to_h5ad <- function(seurat, dataset, out_dir = "data",
   #' reduction: stored as obsm X_<reduction>_full, or X_<split>_<reduction>
   #'   per split (X_<split> for umap). NULL builds without one (the UMAP tab
   #'   stays hidden).
+  #' ordered: the splits have a natural order (stages, doses); needs
+  #'   split_order when the splits come from one object.
   #' exclude_clusters: cluster IDs whose cells are dropped.
   #' prob: optional; as for add_probability().
   #' umaps: optional folder of Seurat objects (.rds) with a "umap" reduction
@@ -114,6 +116,10 @@ seurat_to_h5ad <- function(seurat, dataset, out_dir = "data",
     split_order
   } else if (per_split) {
     names(inputs)
+  } else if (ordered) {
+    fail("ordered = TRUE needs split_order, e.g. split_order = c(\"P15\", \"P30\", \"Adult\"); ",
+         "sorting would put the splits in alphabetical order: ",
+         paste(sort(unique(cell_split)), collapse = ","))
   } else {
     sort(unique(cell_split))
   }

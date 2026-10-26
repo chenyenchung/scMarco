@@ -97,7 +97,7 @@ ui <- fluidPage(
         tabPanel("From gene", find_pos_UI("fpos")),
         tabPanel("Find distinct genes within", find_distinct_UI("fd_genes")),
         tabPanel("Co-expression plot", coexp_UI("coexp")),
-        tabPanel("Plot expression trend", lineplot_UI("lplot")),
+        tabPanel("Plot expression levels", lineplot_UI("lplot")),
         tabPanel("UMAP", umap_viz_UI("umap")),
         tabPanel("Mixture model", mixture_UI("mixture"))
       )
@@ -111,7 +111,7 @@ ui <- fluidPage(
         tabPanel(title = "Cluster Table", find_pos_output("fpos")),
         tabPanel(title = "On/Off", find_distinct_output("fd_genes")),
         tabPanel(title = "Co-Expression", coexp_output("coexp")),
-        tabPanel(title = "Expression Trend", lineplot_output("lplot")),
+        tabPanel(title = "Expression Levels", lineplot_output("lplot")),
         tabPanel(title = "UMAP", umap_viz_output("umap")),
         tabPanel(title = "Mixture Model", mixture_output("mixture"))
       )
@@ -245,8 +245,8 @@ server <- function(input, output, session) {
     has_umap <- length(ds()$reductions) > 0
     has_mixture <- ds()$has_mixture
     for (tab in list(
-      list("controlTabs", "Plot expression trend", has_trend),
-      list("outputTabs", "Expression Trend", has_trend),
+      list("controlTabs", "Plot expression levels", has_trend),
+      list("outputTabs", "Expression Levels", has_trend),
       list("controlTabs", "UMAP", has_umap),
       list("outputTabs", "UMAP", has_umap),
       list("controlTabs", "Mixture model", has_mixture),
@@ -258,31 +258,35 @@ server <- function(input, output, session) {
 
   output$splits_selector <- renderUI({
     splits <- ds()$splits
-    label <- ds()$split_label
+    plural <- ds()$split_plural
     tagList(
       checkboxGroupInput(
         "required_splits",
-        paste0("Must be ON in these ", label, "s"),
+        paste0("Must be ON in these ", plural),
         choices = splits,
         inline = TRUE
       ),
       sliderInput(
         "min_n",
-        paste0("...and ON in at least this many ", label, "s"),
+        paste0("...and ON in at least this many ", plural),
         min = 1, max = length(splits), step = 1, value = 1
       )
     )
   })
 
-  required <- reactive({
-    r <- intersect(input$required_splits, ds()$splits)
-    if (is.null(r)) character(0) else r
-  })
+  required <- reactive(intersect(input$required_splits, ds()$splits))
 
   min_n <- reactive({
     n <- if (is.null(input$min_n)) 1 else input$min_n
     # Requiring k splits implies at least k splits
     min(max(n, length(required()), 1), length(ds()$splits))
+  })
+
+  # Show the count actually used when the required splits raise it
+  observeEvent(required(), {
+    if (!is.null(input$min_n) && input$min_n < length(required())) {
+      updateSliderInput(session, "min_n", value = length(required()))
+    }
   })
 
   first_mark <- reactiveVal(character(0))
@@ -298,6 +302,7 @@ server <- function(input, output, session) {
     min_n = min_n,
     margin = margin,
     split_label = reactive(ds()$split_label),
+    split_plural = reactive(ds()$split_plural),
     scope = reactive(describe_scope(ds(), meta_filters())),
     first_mark = first_mark,
     parent_session = session

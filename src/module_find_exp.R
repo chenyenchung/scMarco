@@ -68,14 +68,14 @@ find_exp_server <- function(id, ctx) {
           return(tags$p(
             style = "margin: 10px",
             "No gene passes the criteria in ", tags$b(cluster_label(res$ds, res$ident)), ". ",
-            describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$scope())
+            describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$split_plural(), ctx$scope())
           ))
         }
         gene_to_select <- names(res$genes)
         names(gene_to_select) <- paste0(gene_to_select, " (", res$genes, ")")
         tagList(
           tags$p(style = "margin: 10px",
-                 describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$scope())),
+                 describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$split_plural(), ctx$scope())),
           tags$h4(
             style = "margin: 10px",
             radioButtons(

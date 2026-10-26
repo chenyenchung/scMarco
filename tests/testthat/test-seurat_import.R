@@ -131,6 +131,14 @@ test_that("build from metadata columns, then binarize from per-split files", {
   expect_equal(ds$clusters_h$uns$scmarco$binarization$source, "Male=<table>,Female=<table>")
 })
 
+test_that("an ordered build needs split_order instead of sorting", {
+  skip_if_not_installed("SeuratObject")
+  dir <- withr::local_tempdir()
+  toy <- toy_seurat(dir)
+  expect_error(run_quietly(seurat_to_h5ad(toy$path, "toy", out_dir = dir, ordered = TRUE)),
+               "ordered = TRUE needs split_order")
+})
+
 test_that("legacy identities and wide table still build in one step", {
   skip_if_not_installed("SeuratObject")
   dir <- withr::local_tempdir()
