@@ -117,6 +117,8 @@ New datasets are built and edited with the package's functions:
 | function | use |
 |---|---|
 | `seurat_to_h5ad()` | new data: Seurat object (split and cluster ID in metadata columns), or one object per split (`c(P15 = "a.rds", P30 = "b.rds")`), + optional subset UMAPs → a *built* dataset; `prob` also binarizes it |
+| `make_pseudobulk()` / `fit_mixture()` / `call_mixture()` | the mixture-model binarizer: pool each cluster's cells into samples (random parts, metadata groups or k-means subclusters), fit each gene, call each cluster |
+| `mixture_heterogeneity()` / `cluster_heterogeneity()` | with k-means subclusters: flag genes whose calls diverge within a cluster (ambiguous there in every search once added with `add_probability(heterogeneity = )`) |
 | `add_probability()` | binarize a built dataset with the mixture-model output, one table per split; the app needs this step |
 | `get_cluster_names()` / `set_cluster_names()` | read, export or apply a `cluster_id`/`name` table |
 | `get_cluster_metadata()` / `set_cluster_metadata()` | read, export or replace a `cluster_id`/`<level>`/... table of cluster groupings (e.g. class, subclass) that lets users limit searches to part of the dataset |

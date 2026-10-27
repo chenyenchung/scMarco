@@ -200,6 +200,22 @@ New datasets are built in two steps:
    [mixture_modeling_smk](https://github.com/chenyenchung/mixture_modeling_smk)
    pipeline, and `add_probability()` adds its output, one table per split.
 
+`make_pseudobulk()` pools each cluster's raw counts into the model's
+samples, as `Seurat::AggregateExpression()` does: random parts, the values
+of a metadata column (`method = "metadata"`), or, with `method = "kmeans"`, k-means subclusters. With
+subclusters, `mixture_heterogeneity()` flags genes whose calls diverge
+within a cluster more than those of genes expressed at a similar level;
+`add_probability(heterogeneity = )` stores them, every search treats them as
+ambiguous in that cluster, and `cluster_heterogeneity()` lists them:
+
+```{r heterogeneity, eval = FALSE}
+pb <- make_pseudobulk(male_counts, male_cluster, n_samples = 4,
+                      method = "kmeans")
+fit <- fit_mixture(pb$lognorm, pb$cluster, pb$replicate)
+het <- mixture_heterogeneity(fit)
+cluster_heterogeneity(het)
+```
+
 ```{r build, eval = FALSE}
 seurat_to_h5ad("neurons.rds", "neurons", out_dir = "data",
                split_col = "sex", cluster_col = "seurat_clusters",

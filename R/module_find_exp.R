@@ -21,6 +21,23 @@ find_exp_output <- function(id) {
     )
 }
 
+heterogeneity_note <- function(b, ds, ident, genes = b$genes, n_show = 10) {
+    # A warning that `ident` may be a mix of cell types: the genes whose calls
+    # diverge between its subclusters (ambiguous there), or NULL for none
+    het <- b$heterogeneous[intersect(genes, b$genes), ident, , drop = FALSE]
+    hit <- rowSums(het, dims = 1) > 0
+    if (!any(hit)) return(NULL)
+    flagged <- names(hit)[hit]
+    shown <- paste(head(flagged, n_show), collapse = ", ")
+    if (length(flagged) > n_show) shown <- paste0(shown, ", ...")
+    tags$p(
+        style = "margin: 10px", class = "text-warning",
+        tags$b(cluster_label(ds, ident)), " may be heterogeneous: ",
+        length(flagged), if (length(flagged) == 1) " gene's calls diverge" else " genes' calls diverge",
+        " between its subclusters (", shown, "). They count as ambiguous in this cluster."
+    )
+}
+
 find_exp_server <- function(id, ctx) {
     # ctx: list of shared reactives built in app.R
     moduleServer(
@@ -48,7 +65,8 @@ find_exp_server <- function(id, ctx) {
                             pair_offtargets(b, idents, ctx$required(), ctx$min_n(),
                                 limit = input$output_num, genes = ctx$genes())
                         }
-                        list(ident = idents, genes = genes, pairs = pairs, ds = ctx$ds())
+                        list(ident = idents, genes = genes, pairs = pairs, ds = ctx$ds(),
+                            het_note = heterogeneity_note(b, ctx$ds(), idents, ctx$genes()))
                     })
                     if (is.null(res)) return()
                     result(res)
@@ -65,15 +83,16 @@ find_exp_server <- function(id, ctx) {
                 res <- result()
                 if (is.null(res)) return(NULL)
                 if (length(res$genes) == 0) {
-                    return(tags$p(
+                    return(tagList(res$het_note, tags$p(
                         style = "margin: 10px",
                         "No gene passes the criteria in ", tags$b(cluster_label(res$ds, res$ident)), ". ",
                         describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$split_plural(), ctx$scope())
-                    ))
+                    )))
                 }
                 gene_to_select <- names(res$genes)
                 names(gene_to_select) <- paste0(gene_to_select, " (", res$genes, ")")
                 tagList(
+                    res$het_note,
                     tags$p(style = "margin: 10px",
                         describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$split_plural(), ctx$scope())),
                     tags$h4(

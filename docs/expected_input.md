@@ -203,6 +203,29 @@ fit <- fit_mixture(lognorm, cluster = meta$cluster, replicate = meta$replicate)
 add_probability("data/<id>.clusters.h5ad", list(Male = call_mixture(fit), ...))
 ```
 
+`make_pseudobulk()` makes the input from one split's raw counts, as
+`Seurat::AggregateExpression(return.seurat = TRUE)` did in the pipeline: each
+cluster's cells are pooled into a few samples, their counts summed, and each
+sample log-normalized, `log1p(summed counts / sample total * 1e4)`. The cells
+file holds log-normalized values only, so take the counts from the Seurat
+object. By default (`method = "random"`) the cells are dealt into random parts
+without replacement, which assumes each cluster is homogeneous and gives the
+model several samples per cluster when there are few clusters. With
+`method = "metadata"` each cluster is split by a cell metadata column
+(`group`, e.g. `orig.ident`): each value is one sample and its replicate (to
+pool libraries into two replicates as the pipeline did, map them to two
+groups first). With `method = "kmeans"` each cluster is split into
+`n_samples` k-means subclusters (on an `embedding` such as the PCA, or on
+the cluster's own principal components), so that its heterogeneity can be
+scored (2c): if a cluster can be split, the genes that split it are the ones
+whose calls diverge. Metadata groups can be scored the same way.
+
+```r
+counts <- SeuratObject::LayerData(obj, layer = "counts")   # one split's cells
+pb <- make_pseudobulk(counts, obj$scmarco_cluster, n_samples = 4, method = "kmeans")
+fit <- fit_mixture(pb$lognorm, pb$cluster, pb$replicate)
+```
+
 It adapts Fred P. Davis's mixture model and code
 ([opticlobe](https://github.com/fredpdavis/opticlobe), Davis et al. 2020) through
 the mixture-model pipeline
@@ -280,6 +303,47 @@ fit across several splits (e.g. four species modeled together):
   `unimodal.sd` and `exprType`. Genes whose `exprType` is not `"bimodal"` are
   non-bimodal in every split.
 
+### 2c. Cluster heterogeneity (optional)
+
+`mixture_heterogeneity(fit)` scores, for each bimodal gene and cluster, how
+much the mixture model's calls (P(On) of each sample, `log_p_on_sample`)
+disagree between the cluster's samples, i.e. its k-means subclusters. In a
+homogeneous cluster with Gaussian noise, genes expressed at a similar level
+should have calls that spread similarly. So every bimodal gene × cluster pair
+of the split is binned by the gene's level in that cluster (20 quantile bins,
+at least 10 pairs each); each bin's spreads (SD of P(On)), Winsorized at the
+20% and 80% quantiles, give a mean and SD (at least 0.01), and each pair's
+spread becomes a z-score. The reference is pooled across clusters because a
+mixed cluster's divergent genes share in-between levels and would swamp a
+per-cluster reference. A gene is **heterogeneous** in a cluster when `z >= 3`, its
+spread is at least 0.25, and its calls truly diverge: one sample has
+P(On) >= 0.9 and another <= 0.1 (`z_cutoff`, `min_spread`, `call_margin`).
+The last condition drops samples that only disagree on how sure the call is,
+which a small, noisy subcluster can cause. Clusters with one sample
+and non-bimodal genes are not scored.
+
+```r
+het <- mixture_heterogeneity(fit)
+cluster_heterogeneity(het)   # flagged genes per cluster, most divergent first
+add_probability("data/<id>.clusters.h5ad", list(Male = call_mixture(fit), ...),
+                heterogeneity = list(Male = het, ...))
+```
+
+`heterogeneity` is named by split; splits left out are not scored, and every
+split must use the same cutoffs. The flags are stored in `layers/het_flag`
+(1 heterogeneous, 0 not), the scores in `layers/het_z` and `layers/het_spread`
+(all three NaN where not scored), and the settings in
+`uns/scmarco/heterogeneity` (`z_cutoff`, `min_spread`, `call_margin`,
+`n_bins`, `trim`).
+Running `add_probability()` without `heterogeneity` removes them.
+
+A gene heterogeneous in a split × cluster is **ambiguous** there in every
+search, whatever its probability: it never counts as ON (so it is never a
+marker of that cluster) and always counts as off-target expression.
+`cluster_heterogeneity(ds)` lists the flagged genes of a loaded dataset, and
+the app's From cluster search warns that the chosen cluster may be
+heterogeneous and names them.
+
 ### Rules, for both formats
 
 | Rule | On violation |
@@ -303,13 +367,17 @@ The output is described fully in the README ("Data format"). In short:
 
 | File | Contents |
 |---|---|
-| `<id>.clusters.h5ad` | obs = split × cluster pairs that exist (`split`, `cluster` ID, optional `cluster_name`, `n_cells`); layers `pct_pos`, `mean_lognorm` and, once binarized, `prob`; `var/is_bimodal`, `varm/bimodal_by_split` and `varm/mixture_*` once binarized; `uns/scmarco` metadata |
+| `<id>.clusters.h5ad` | obs = split × cluster pairs that exist (`split`, `cluster` ID, optional `cluster_name`, `n_cells`); layers `pct_pos`, `mean_lognorm` and, once binarized, `prob` (and optionally `het_flag`, `het_z`, `het_spread`); `var/is_bimodal`, `varm/bimodal_by_split` and `varm/mixture_*` once binarized; `uns/scmarco` metadata |
 | `<id>.cells.h5ad` | X = log-normalized cells × genes (CSC); obs = `barcode`, `split`, `cluster`; `obsm/X_*` reductions |
 
 | State | Has `layers/prob` | `uns/scmarco/binarization` | Validator | App |
 |---|---|---|---|---|
 | *built* | no | absent | `validate_h5ad(stage = "built")` passes | **refuses to start** |
 | *binarized* | yes | `method`, `source` (the `prob` files, `<table>` for one passed in memory), `date`, `version` | `validate_h5ad()` passes | loads |
+
+A binarized file may also hold the heterogeneity scores of 2c
+(`layers/het_flag`, `layers/het_z`, `layers/het_spread`,
+`uns/scmarco/heterogeneity`).
 
 `uns/scmarco/format_version` is the schema version; the app refuses a file
 with another one. `uns/scmarco/binarization/version` is the binarizer version,

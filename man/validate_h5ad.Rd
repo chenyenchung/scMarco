@@ -21,8 +21,9 @@ flag \code{binarized}; print it with \code{\link[=report_validation]{report_vali
 \description{
 Checks a clusters file, and optionally its cells file, against the scMarco
 h5ad format (format_version 2.0): obs layout and labels, cluster names and
-metadata, layer shapes and ranges, bimodality and mixture-model fields, and
-the agreement of the cells file with the clusters file.
+metadata, layer shapes and ranges, bimodality, mixture-model and
+heterogeneity fields, and the agreement of the cells file with the
+clusters file.
 }
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")

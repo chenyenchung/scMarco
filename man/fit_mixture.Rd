@@ -21,7 +21,8 @@ merge_mixture_fits(...)
 \arguments{
 \item{lognorm}{Log-normalized expression, genes x pseudobulk samples (a
 matrix or data.frame with gene row names). Each cluster needs samples in
-several replicates, e.g. its cells pooled into two random halves.}
+several replicates, e.g. its cells pooled into two random halves or
+into k-means subclusters with \code{\link[=make_pseudobulk]{make_pseudobulk()}}.}
 
 \item{cluster}{Cluster ID of each sample (column of \code{lognorm}).}
 
@@ -88,5 +89,6 @@ and computational resource for exploring neural circuit function. eLife
 9:e50901. Code: \url{https://github.com/fredpdavis/opticlobe}.
 }
 \seealso{
-\code{\link[=call_mixture]{call_mixture()}}, \code{\link[=add_probability]{add_probability()}}.
+\code{\link[=make_pseudobulk]{make_pseudobulk()}} for the input, \code{\link[=call_mixture]{call_mixture()}},
+\code{\link[=mixture_heterogeneity]{mixture_heterogeneity()}}, \code{\link[=add_probability]{add_probability()}}.
 }

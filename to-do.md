@@ -108,5 +108,10 @@ scope. Both converters are in `R/migrate.R`.
   (`fit_mixture()`, `call_mixture()`), but its input, log-normalized
   pseudobulk replicates of each cluster, is still made outside it
   (mm_marker's `get_input.R`: `Seurat::AggregateExpression()` on each cluster's
-  cells split into two halves by library). Add a SeuratObject-only helper, and
-  a way to run gene chunks as parallel jobs.
+  cells split into two halves by library). `make_pseudobulk()` now pools a
+  counts matrix as `AggregateExpression()` does (random parts, metadata groups
+  or k-means subclusters); still to add: taking a Seurat object directly, and a
+  way to run gene chunks as parallel jobs.
+- [ ] **Cluster heterogeneity**: try `mixture_heterogeneity()`'s cutoffs
+  (`z_cutoff = 3`, `min_spread = 0.25`) on real data, e.g. clusters known to
+  merge two cell types.
