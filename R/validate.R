@@ -5,9 +5,8 @@
 #'
 #' Checks a clusters file, and optionally its cells file, against the scMarco
 #' h5ad format (format_version 2.0): obs layout and labels, cluster names and
-#' metadata, layer shapes and ranges, bimodality, mixture-model and
-#' heterogeneity fields, and the agreement of the cells file with the
-#' clusters file.
+#' metadata, layer shapes and ranges, bimodality and mixture-model fields, and
+#' the agreement of the cells file with the clusters file.
 #'
 #' @param clusters Path of the `.clusters.h5ad` file.
 #' @param cells Optional path of the `.cells.h5ad` file (`""` for none).
@@ -133,37 +132,6 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
     if (!is.null(meta$mixture_models) &&
         length(meta$mixture_models) != length(meta$bimodal_splits)) {
         err("uns mixture_models does not match uns bimodal_splits")
-    }
-    het_layers <- intersect(HET_LAYERS, ch$layers)
-    if (length(het_layers) > 0) {
-        if (length(het_layers) < length(HET_LAYERS)) {
-            err("layers ", paste(HET_LAYERS, collapse = ", "), " must come together")
-        }
-        if (!all(c("z_cutoff", "min_spread", "call_margin") %in% names(meta$heterogeneity))) {
-            err("uns/scmarco/heterogeneity needs z_cutoff, min_spread and call_margin")
-        }
-        if ("het_flag" %in% het_layers) {
-            m <- h5ad_layer(ch, "het_flag")
-            if (!identical(dim(m), c(nrow(ch$obs), length(ch$genes)))) {
-                err("layers/het_flag has shape ", paste(dim(m), collapse = "x"))
-            } else if (any(!is.na(m) & !m %in% c(0, 1))) {
-                err("layers/het_flag must be 0, 1 or missing")
-            }
-        }
-        if ("het_spread" %in% het_layers) {
-            m <- h5ad_layer(ch, "het_spread")
-            if (!identical(dim(m), c(nrow(ch$obs), length(ch$genes)))) {
-                err("layers/het_spread has shape ", paste(dim(m), collapse = "x"))
-            } else if (any(!is.na(m) & (m < 0 | m > 1))) {
-                err("layers/het_spread has values outside [0, 1]")
-            }
-        }
-        if ("het_z" %in% het_layers) {
-            m <- h5ad_layer(ch, "het_z")
-            if (!identical(dim(m), c(nrow(ch$obs), length(ch$genes)))) {
-                err("layers/het_z has shape ", paste(dim(m), collapse = "x"))
-            }
-        }
     }
     if (binarized && !"is_bimodal" %in% names(ch$var)) {
         warn("var/is_bimodal is missing: every gene will be used for marker finding")

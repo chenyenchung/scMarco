@@ -63,11 +63,9 @@ write_clusters_h5ad <- function(path, obs_split, obs_cluster, splits, clusters,
 }
 
 add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
-                                  mixture = NULL, mixture_models = NULL,
-                                  heterogeneity = NULL) {
+                                  mixture = NULL, mixture_models = NULL) {
     # Binarize a clusters file in place: write layers/prob, var/is_bimodal,
-    # varm/bimodal_by_split, varm/mixture_*, layers/het_* and
-    # uns/scmarco/binarization.
+    # varm/bimodal_by_split, varm/mixture_* and uns/scmarco/binarization.
     # Replaces any earlier probabilities; obs, the other layers and uns are kept.
     # prob: n_obs x n_genes matrix in obs order
     # bimodal_by_split: n_genes x n_splits logical matrix, columns named by split
@@ -77,10 +75,6 @@ add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
     # mixture_models: split -> the model it was fit in; splits sharing a model
     #   were fit together. Stored in uns/scmarco/mixture_models (in
     #   bimodal_splits order) alongside the parameters
-    # heterogeneity: optional list(z, spread, params) from
-    #   assemble_heterogeneity(): n_obs x n_genes matrices written as
-    #   layers/het_z, layers/het_spread and layers/het_flag, params as
-    #   uns/scmarco/heterogeneity
     ad <- read_h5ad(path, as = "InMemoryAnnData")
     splits <- levels(ad$obs$split)
     genes <- rownames(ad$var)
@@ -91,14 +85,6 @@ add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
     dimnames(prob) <- list(rownames(ad$obs), genes)
     layers <- ad$layers
     layers$prob <- prob
-    # drop scores of an earlier run so they never outlive their probabilities
-    layers <- layers[!startsWith(names(layers), "het_")]
-    if (!is.null(heterogeneity)) {
-        layers$het_z <- heterogeneity$z
-        layers$het_spread <- heterogeneity$spread
-        layers$het_flag <- heterogeneity$flag
-        for (k in HET_LAYERS) dimnames(layers[[k]]) <- dimnames(prob)
-    }
     ad$layers <- layers
 
     bim <- bimodal_by_split[genes, splits, drop = FALSE]
@@ -122,7 +108,6 @@ add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
     uns$scmarco$bimodal_splits <- splits
     uns$scmarco$binarization <- c(binarization, version = SCMARCO_BINARIZER_VERSION)
     uns$scmarco$mixture_models <- NULL
-    uns$scmarco$heterogeneity <- heterogeneity$params
     if (!is.null(mixture)) {
         if (is.null(mixture_models)) mixture_models <- setNames(splits, splits)
         uns$scmarco$mixture_models <- unname(as.character(mixture_models[splits]))

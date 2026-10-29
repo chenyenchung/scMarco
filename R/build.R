@@ -324,11 +324,6 @@ expand_genes <- function(x, genes) {
 #'   a named list of data.frames, an `.rds` path holding such a list, or a
 #'   legacy wide table with `"<split>@<cluster>"` columns (splits fit
 #'   together, as one model).
-#' @param heterogeneity Optional per-gene cluster heterogeneity, results of
-#'   [mixture_heterogeneity()] named by split (or `.rds` paths holding them),
-#'   e.g. `list(Male = het_male)`. Splits left out are not scored. Genes
-#'   heterogeneous in a cluster are ambiguous there in every search; see
-#'   [cluster_heterogeneity()].
 #' @param validate Check the file afterwards with [validate_h5ad()] and stop
 #'   on errors.
 #'
@@ -351,7 +346,7 @@ expand_genes <- function(x, genes) {
 #' })
 #' suppressWarnings(add_probability(path, tables))
 #' @export
-add_probability <- function(clusters, prob, heterogeneity = NULL, validate = TRUE) {
+add_probability <- function(clusters, prob, validate = TRUE) {
     ch <- h5ad_open(clusters)
     if ("prob" %in% ch$layers) {
         message(clusters, " already has probabilities; replacing them")
@@ -360,25 +355,15 @@ add_probability <- function(clusters, prob, heterogeneity = NULL, validate = TRU
     tables <- read_prob(prob)
     p <- assemble_prob(tables, as.character(ch$obs$split), as.character(ch$obs$cluster),
         splits, ch$genes)
-    het <- NULL
-    if (!is.null(heterogeneity)) {
-        het <- assemble_heterogeneity(heterogeneity, as.character(ch$obs$split),
-            as.character(ch$obs$cluster), splits, ch$genes)
-    }
     add_probability_layer(clusters, p$prob, p$bimodal_by_split, list(
         method = "mixture model", source = attr(tables, "source"), date = format(Sys.Date())
-    ), mixture = p$mixture, mixture_models = p$mixture_models, heterogeneity = het)
+    ), mixture = p$mixture, mixture_models = p$mixture_models)
     groups <- split(names(p$mixture_models), p$mixture_models)
     message("Mixture models: ", paste(vapply(groups, paste, "", collapse = " + "),
         collapse = "; "))
     n_bim <- colSums(p$bimodal_by_split)
     message("Wrote probabilities to ", clusters, "; bimodal genes per split: ",
         paste(sprintf("%s %d", names(n_bim), n_bim), collapse = ", "))
-    if (!is.null(het)) {
-        flagged <- het$flag %in% 1
-        message("Heterogeneity scored in ", paste(names(as.list(heterogeneity)), collapse = ", "),
-            "; heterogeneous gene x cluster pairs: ", sum(flagged))
-    }
 
     if (!validate) return(invisible(NULL))
     res <- validate_h5ad(clusters, stage = "binarized")

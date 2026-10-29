@@ -20,9 +20,7 @@ overrides \code{split_order}, \code{split_label}, \code{split_label_plural},
 An object of class \code{scmarco_dataset}: a list with, among others,
 \code{splits}, \code{clusters}, \code{cluster_names}, \code{cluster_labels}, \code{all_genes},
 \code{analysis_genes} (genes used for marker finding), \code{split_label},
-\code{reductions} and the flags \code{has_pct}, \code{has_mean}, \code{has_mixture} and
-\code{has_heterogeneity} (genes heterogeneous in a cluster are ambiguous
-there; see \code{\link[=cluster_heterogeneity]{cluster_heterogeneity()}}).
+\code{reductions} and the flags \code{has_pct}, \code{has_mean} and \code{has_mixture}.
 }
 \description{
 Opens the h5ad files of a dataset and reads what every search needs (the

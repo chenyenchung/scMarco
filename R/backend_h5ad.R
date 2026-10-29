@@ -412,9 +412,7 @@ ds_check_config <- function(datasets) {
 #' @return An object of class `scmarco_dataset`: a list with, among others,
 #'   `splits`, `clusters`, `cluster_names`, `cluster_labels`, `all_genes`,
 #'   `analysis_genes` (genes used for marker finding), `split_label`,
-#'   `reductions` and the flags `has_pct`, `has_mean`, `has_mixture` and
-#'   `has_heterogeneity` (genes heterogeneous in a cluster are ambiguous
-#'   there; see [cluster_heterogeneity()]).
+#'   `reductions` and the flags `has_pct`, `has_mean` and `has_mixture`.
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
@@ -469,14 +467,6 @@ ds_load <- function(id, entry) {
         mixture_models <- setNames(models, fit_splits)
     }
 
-    # Genes heterogeneous in a split x cluster (obs x genes), as flagged by
-    # mixture_heterogeneity()
-    heterogeneous <- NULL
-    if ("het_flag" %in% ch$layers) {
-        heterogeneous <- h5ad_layer(ch, "het_flag") %in% 1
-        dim(heterogeneous) <- c(nrow(ch$obs), length(ch$genes))
-    }
-
     analysis_genes <- ch$genes
     if ("is_bimodal" %in% names(ch$var)) {
         analysis_genes <- ch$genes[ch$var$is_bimodal %in% TRUE]
@@ -507,7 +497,6 @@ ds_load <- function(id, entry) {
         obs_cluster = as.character(ch$obs$cluster),
         prob = h5ad_layer(ch, "prob"),
         bimodal = bimodal,
-        heterogeneous = heterogeneous,
         mixture = mixture,
         mixture_models = mixture_models,
         all_genes = ch$genes,
@@ -521,7 +510,6 @@ ds_load <- function(id, entry) {
         has_mean = has_mean,
         trend = trend_mode(entry, ordered_splits, has_mean, !is.null(cells)),
         has_mixture = !is.null(mixture),
-        has_heterogeneity = !is.null(heterogeneous),
         reductions = if (is.null(cells)) character(0) else cells$obsm,
         binarized = new.env(parent = emptyenv())
     )
@@ -560,7 +548,7 @@ ds_binarize <- function(ds, margin) {
     b <- binarize(
         ds$prob, ds$obs_split, ds$obs_cluster,
         splits = ds$splits, clusters = ds$clusters,
-        margin = margin, bimodal = ds$bimodal, heterogeneous = ds$heterogeneous
+        margin = margin, bimodal = ds$bimodal
     )
     ds$binarized[[key]] <- b
     ds$binarized$.order <- c(order, key)

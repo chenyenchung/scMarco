@@ -12,10 +12,6 @@
 #                                      confidently ON nor confidently OFF
 #   present[cluster, split]   logical  the cluster exists in the split
 #   bimodal[gene, split]      logical  the mixture model called the gene bimodal
-#   heterogeneous[gene, cluster, split]
-#                             logical  the gene's calls diverge between the
-#                                      cluster's subclusters; it is ambiguous
-#                                      there whatever its probability
 #
 # Semantics shared by all functions (ambiguous calls behave like NA, so they
 # never help a gene):
@@ -35,9 +31,7 @@
 #' `1 - margin`, OFF when it is at most `margin`, and ambiguous in between.
 #' Ambiguous calls never count as ON, but they do count as off-target
 #' expression. A gene the mixture model did not call bimodal in a split is
-#' neither ON nor ambiguous there. A bimodal gene that is heterogeneous in a
-#' cluster and split (see [mixture_heterogeneity()]) is always ambiguous
-#' there, whatever its probability.
+#' neither ON nor ambiguous there.
 #'
 #' @param prob Numeric matrix, one row per split x cluster pair that exists
 #'   and one column per gene (column names are the genes). `NA` is OFF.
@@ -48,12 +42,9 @@
 #'   band and ON is `prob > 0.5`.
 #' @param bimodal Optional logical matrix, genes x splits: whether the
 #'   mixture model called the gene bimodal in that split.
-#' @param heterogeneous Optional logical matrix shaped like `prob`: whether
-#'   the gene is heterogeneous in that split x cluster (`NA` is not).
 #'
 #' @return An object of class `scmarco_binarized`: a list with the logical
-#'   arrays `on`, `ambiguous` and `heterogeneous` (genes x clusters x
-#'   splits), the logical
+#'   arrays `on` and `ambiguous` (genes x clusters x splits), the logical
 #'   matrices `present` (clusters x splits) and `bimodal` (genes x splits),
 #'   and `genes`, `clusters`, `splits` and `margin`.
 #' @examples
@@ -66,9 +57,8 @@
 #' b$ambiguous[, , "adult"]
 #' @export
 binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
-                     margin, bimodal = NULL, heterogeneous = NULL) {
+                     margin, bimodal = NULL) {
     stopifnot(
-        is.null(heterogeneous) || identical(dim(heterogeneous), dim(prob)),
         nrow(prob) == length(obs_split),
         length(obs_split) == length(obs_cluster),
         margin > 0, margin <= 0.5
@@ -80,7 +70,6 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
         dimnames = list(genes, clusters, splits)
     )
     ambiguous <- on
-    het <- on
     present <- matrix(
         FALSE, length(clusters), length(splits),
         dimnames = list(clusters, splits)
@@ -115,18 +104,11 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
             ambiguous[!bimodal[, s], , s] <- FALSE
         }
     }
-    if (!is.null(heterogeneous)) {
-        for (i in seq_len(nrow(prob))) {
-            het[, ci[i], si[i]] <- heterogeneous[i, ] %in% TRUE & bimodal[, si[i]]
-        }
-        on[het] <- FALSE
-        ambiguous[het] <- TRUE
-    }
 
     structure(
         list(
-            on = on, ambiguous = ambiguous, heterogeneous = het, present = present,
-            bimodal = bimodal, genes = genes, clusters = clusters, splits = splits, margin = margin
+            on = on, ambiguous = ambiguous, present = present, bimodal = bimodal,
+            genes = genes, clusters = clusters, splits = splits, margin = margin
         ),
         class = "scmarco_binarized"
     )
@@ -153,7 +135,6 @@ restrict_clusters <- function(b, keep) {
     if (identical(keep, b$clusters)) return(b)
     b$on <- b$on[, keep, , drop = FALSE]
     b$ambiguous <- b$ambiguous[, keep, , drop = FALSE]
-    b$heterogeneous <- b$heterogeneous[, keep, , drop = FALSE]
     b$present <- b$present[keep, , drop = FALSE]
     b$clusters <- keep
     b

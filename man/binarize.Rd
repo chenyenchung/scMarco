@@ -11,8 +11,7 @@ binarize(
   splits,
   clusters,
   margin,
-  bimodal = NULL,
-  heterogeneous = NULL
+  bimodal = NULL
 )
 }
 \arguments{
@@ -29,14 +28,10 @@ band and ON is \code{prob > 0.5}.}
 
 \item{bimodal}{Optional logical matrix, genes x splits: whether the
 mixture model called the gene bimodal in that split.}
-
-\item{heterogeneous}{Optional logical matrix shaped like \code{prob}: whether
-the gene is heterogeneous in that split x cluster (\code{NA} is not).}
 }
 \value{
 An object of class \code{scmarco_binarized}: a list with the logical
-arrays \code{on}, \code{ambiguous} and \code{heterogeneous} (genes x clusters x
-splits), the logical
+arrays \code{on} and \code{ambiguous} (genes x clusters x splits), the logical
 matrices \code{present} (clusters x splits) and \code{bimodal} (genes x splits),
 and \code{genes}, \code{clusters}, \code{splits} and \code{margin}.
 }
@@ -50,9 +45,7 @@ A gene is ON in a cluster and split when its probability is at least
 \code{1 - margin}, OFF when it is at most \code{margin}, and ambiguous in between.
 Ambiguous calls never count as ON, but they do count as off-target
 expression. A gene the mixture model did not call bimodal in a split is
-neither ON nor ambiguous there. A bimodal gene that is heterogeneous in a
-cluster and split (see \code{\link[=mixture_heterogeneity]{mixture_heterogeneity()}}) is always ambiguous
-there, whatever its probability.
+neither ON nor ambiguous there.
 }
 \examples{
 prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,

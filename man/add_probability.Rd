@@ -4,7 +4,7 @@
 \alias{add_probability}
 \title{Add mixture-model probabilities to a dataset}
 \usage{
-add_probability(clusters, prob, heterogeneity = NULL, validate = TRUE)
+add_probability(clusters, prob, validate = TRUE)
 }
 \arguments{
 \item{clusters}{Path of the \code{.clusters.h5ad} file.}
@@ -14,12 +14,6 @@ vector of \code{.rds} paths (\code{c(Male = "male.rds", Female = "female.rds")})
 a named list of data.frames, an \code{.rds} path holding such a list, or a
 legacy wide table with \code{"<split>@<cluster>"} columns (splits fit
 together, as one model).}
-
-\item{heterogeneity}{Optional per-gene cluster heterogeneity, results of
-\code{\link[=mixture_heterogeneity]{mixture_heterogeneity()}} named by split (or \code{.rds} paths holding them),
-e.g. \code{list(Male = het_male)}. Splits left out are not scored. Genes
-heterogeneous in a cluster are ambiguous there in every search; see
-\code{\link[=cluster_heterogeneity]{cluster_heterogeneity()}}.}
 
 \item{validate}{Check the file afterwards with \code{\link[=validate_h5ad]{validate_h5ad()}} and stop
 on errors.}

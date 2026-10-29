@@ -17,16 +17,8 @@
   so the mixture-model plot draws the exact fitted curves.
 * `make_pseudobulk()` pools each cluster's raw counts into pseudobulk samples
   for `fit_mixture()` as `Seurat::AggregateExpression()` does (summed counts,
-  then LogNormalize): random parts (sampling without replacement), the values
-  of a cell metadata column, or k-means subclusters.
-* Cluster heterogeneity: `mixture_heterogeneity()` scores how much the calls
-  of a cluster's k-means subclusters disagree for each gene, against genes
-  expressed at a similar level (Winsorized reference per level bin, pooled
-  across the split's clusters), and flags those whose subclusters are
-  confidently ON and OFF. `add_probability(heterogeneity = )` stores them;
-  genes heterogeneous in a cluster are ambiguous there in every search.
-  `cluster_heterogeneity()` lists them, and the From cluster search warns
-  when the chosen cluster may be heterogeneous.
+  then LogNormalize): random parts (sampling without replacement) or the
+  values of a cell metadata column.
 * Fixed: `fit_mixture()` no longer loops forever when a replicate label has
   a single sample.
 * New synthetic example dataset `toy` (inst/extdata) with a cells file,

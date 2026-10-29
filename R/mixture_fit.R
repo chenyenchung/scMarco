@@ -64,8 +64,8 @@ partition_folds <- function(n, k, labels) {
     # into k folds of floor(n / k), the remainder joining fold k. A label
     # (replicate) found in one fold only swaps a sample with another label's
     # sample in another fold until every label spans two folds or more (a
-    # label with one sample, e.g. a k-means subcluster number only one
-    # cluster reaches, cannot and is left as it is).
+    # label with one sample, e.g. a metadata group only one cluster has
+    # enough cells in, cannot and is left as it is).
     folds <- numeric(n)
     shuffled <- sample(seq_len(n), n)
     size <- floor(n / k)
@@ -180,8 +180,8 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #'
 #' @param lognorm Log-normalized expression, genes x pseudobulk samples (a
 #'   matrix or data.frame with gene row names). Each cluster needs samples in
-#'   several replicates, e.g. its cells pooled into two random halves or
-#'   into k-means subclusters with [make_pseudobulk()].
+#'   several replicates, e.g. its cells pooled into two random halves with
+#'   [make_pseudobulk()].
 #' @param cluster Cluster ID of each sample (column of `lognorm`).
 #' @param replicate Replicate of each sample, kept apart in cross-validation.
 #'   `NULL` puts every sample in one replicate.
@@ -196,7 +196,7 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #'   and `unimodal` posterior medians, `elpd`), and the input `lognorm`,
 #'   `cluster` and `replicate`.
 #' @seealso [make_pseudobulk()] for the input, [call_mixture()],
-#'   [mixture_heterogeneity()], [add_probability()].
+#'   [add_probability()].
 #' @references Davis FP, Nern A, Picard S, et al. (2020). A genetic, genomic,
 #'   and computational resource for exploring neural circuit function. eLife
 #'   9:e50901. Code: <https://github.com/fredpdavis/opticlobe>.
@@ -285,14 +285,6 @@ merge_mixture_fits <- function(...) {
         cluster = first$cluster, replicate = first$replicate), class = "scmarco_mixture")
 }
 
-mixture_bimodal <- function(fit) {
-    # Named logical per gene: the bimodal fit beats the unimodal one by more
-    # than two standard errors of the elpd difference
-    diff <- vapply(fit$fits, function(g) g$elpd$diff, numeric(1))
-    diff_se <- vapply(fit$fits, function(g) g$elpd$diff_se, numeric(1))
-    diff > 0 & diff > 2 * diff_se
-}
-
 #' Call expression from mixture-model fits
 #'
 #' Turns the fits of [fit_mixture()] into one split's probability table for
@@ -332,7 +324,7 @@ call_mixture <- function(fit) {
     pick <- function(f) vapply(fit$fits, f, numeric(1))
     diff <- pick(function(g) g$elpd$diff)
     diff_se <- pick(function(g) g$elpd$diff_se)
-    bimodal <- mixture_bimodal(fit)
+    bimodal <- diff > 0 & diff > 2 * diff_se
     p_on <- do.call(rbind, lapply(fit$fits, function(g) exp(g$bimodal$log_p_on_cluster)))
     dimnames(p_on) <- list(genes, clusters)
     message(sum(bimodal), " of ", length(genes), " genes are bimodal")
