@@ -39,14 +39,84 @@ need_packages <- function(pkgs, what) {
 }
 
 mixture_stan_model <- function(name) {
-    # Compiled Stan model inst/stan/<name>.stan, compiled once per session
+    # Compiled Stan model inst/stan/<name>.stan: kept for the session, and
+    # cached on disk so that later sessions (e.g. the other jobs of a chunked
+    # fit) load it instead of compiling it again
     if (is.null(stan_models[[name]])) {
-        message("Compiling the ", name, " Stan model (once per session)")
         file <- system.file("stan", paste0(name, ".stan"), package = "scMarco")
-        stan_models[[name]] <- rstan::stan_model(file, model_name = name,
-            auto_write = FALSE)
+        stan_models[[name]] <- cached_stan_model(name, file,
+            compile = function() {
+                message("Compiling the ", name, " Stan model (needs ~12 GB of memory)")
+                tryCatch(
+                    rstan::stan_model(file, model_name = name, auto_write = FALSE),
+                    error = function(e) fail("Compiling the ", name, " Stan model failed. ",
+                        "The C++ compiler needs ~12 GB of memory; when it is killed for ",
+                        "lack of memory the error is unclear, e.g. 'invalid connection'. ",
+                        "Original error: ", conditionMessage(e)))
+            })
     }
     stan_models[[name]]
+}
+
+stan_cache_dir <- function() {
+    # Where compiled Stan models are cached: option scMarco.stan_cache, else
+    # SCMARCO_STAN_CACHE, else the user cache directory. "" turns caching off.
+    dir <- getOption("scMarco.stan_cache", Sys.getenv("SCMARCO_STAN_CACHE", NA))
+    if (is.na(dir)) dir <- tools::R_user_dir("scMarco", which = "cache")
+    dir
+}
+
+stan_cache_file <- function(name, file, dir = stan_cache_dir()) {
+    # Cache file of model `name`: keyed by its Stan code and by what the
+    # compiled code depends on, so an edited model or another rstan,
+    # StanHeaders or R gets its own file
+    v <- function(p) as.character(utils::packageVersion(p))
+    key <- paste(unname(tools::md5sum(file)), v("rstan"), v("StanHeaders"),
+        R.version$major, R.version$minor, R.version$platform)
+    key_file <- tempfile()   # md5sum() hashes files only
+    on.exit(unlink(key_file), add = TRUE)
+    writeLines(key, key_file)
+    tag <- substr(unname(tools::md5sum(key_file)), 1, 16)
+    file.path(dir, sprintf("%s-%s.rds", name, tag))
+}
+
+stanmodel_usable <- function(m) {
+    # A cached stanmodel can be used when it holds its compiled code for this
+    # system (rstan's own check for auto_write)
+    methods::is(m, "stanmodel") && isTRUE(m@dso@dso_saved) &&
+        identical(m@dso@system, R.version$system)
+}
+
+cached_stan_model <- function(name, file, compile, usable = stanmodel_usable,
+                              dir = stan_cache_dir()) {
+    # Load model `name` from the disk cache, or compile() it and cache it. A
+    # cache that cannot be read or written only costs a compilation.
+    if (!nzchar(dir)) return(compile())
+    path <- stan_cache_file(name, file, dir)
+    if (file.exists(path)) {
+        m <- tryCatch(readRDS(path), error = function(e) NULL)
+        if (!is.null(m) && usable(m)) {
+            message("Using the compiled ", name, " Stan model from ", path)
+            return(m)
+        }
+    }
+    m <- compile()
+    # write to a temporary file and rename it, so parallel jobs that compile
+    # at once never read a half-written cache
+    tmp <- tempfile(paste0(name, "-"), tmpdir = dir, fileext = ".tmp")
+    ok <- tryCatch({
+        dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+        saveRDS(m, tmp)
+        file.rename(tmp, path)
+    }, error = function(e) FALSE, warning = function(w) FALSE)
+    if (isTRUE(ok)) {
+        message("Cached the compiled ", name, " Stan model in ", path)
+    } else {
+        unlink(tmp)
+        message("Could not cache the compiled ", name, " Stan model in ", dir,
+            "; set options(scMarco.stan_cache = <writable folder>) to reuse it")
+    }
+    m
 }
 
 run_stan <- function(name, data, n_iter, cores) {
@@ -166,7 +236,17 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #'
 #' Each gene takes 2 + 2 `n_folds` Stan runs, about a minute, so for a whole
 #' dataset run chunks of genes in parallel jobs (`genes`) and join them with
-#' merge_mixture_fits(). The Stan models are compiled once per R session.
+#' merge_mixture_fits().
+#'
+#' The four Stan models are compiled the first time they are needed, which
+#' takes a few minutes and ~12 GB of memory, and cached in
+#' `tools::R_user_dir("scMarco", "cache")`, so later sessions and jobs load
+#' them instead. Set `options(scMarco.stan_cache = <folder>)` (or the
+#' environment variable `SCMARCO_STAN_CACHE`) to cache them elsewhere, e.g. a
+#' folder that every node of a cluster sees, or `""` to compile in every
+#' session. Before submitting many jobs, fit one gene once so the jobs find
+#' the models compiled. A new rstan, StanHeaders or R version compiles them
+#' again.
 #'
 #' Fits are reproducible by default: each gene is fit after
 #' `set.seed(seed + i)`, `i` being its row in `lognorm`, so a gene's fit does

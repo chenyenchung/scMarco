@@ -61,7 +61,17 @@ from Fred P. Davis's mixture model and code for Davis et al. (2020)
 \details{
 Each gene takes 2 + 2 \code{n_folds} Stan runs, about a minute, so for a whole
 dataset run chunks of genes in parallel jobs (\code{genes}) and join them with
-merge_mixture_fits(). The Stan models are compiled once per R session.
+merge_mixture_fits().
+
+The four Stan models are compiled the first time they are needed, which
+takes a few minutes and ~12 GB of memory, and cached in
+\code{tools::R_user_dir("scMarco", "cache")}, so later sessions and jobs load
+them instead. Set \verb{options(scMarco.stan_cache = <folder>)} (or the
+environment variable \code{SCMARCO_STAN_CACHE}) to cache them elsewhere, e.g. a
+folder that every node of a cluster sees, or \code{""} to compile in every
+session. Before submitting many jobs, fit one gene once so the jobs find
+the models compiled. A new rstan, StanHeaders or R version compiles them
+again.
 
 Fits are reproducible by default: each gene is fit after
 \code{set.seed(seed + i)}, \code{i} being its row in \code{lognorm}, so a gene's fit does

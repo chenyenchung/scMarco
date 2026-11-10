@@ -118,6 +118,7 @@ test_that("fit_mixture fits genes with Stan", {
   skip_if(Sys.getenv("SCMARCO_TEST_STAN") == "",
           "set SCMARCO_TEST_STAN=true to compile and run the Stan models")
   skip_if_not_installed("rstan")
+  withr::local_options(scMarco.stan_cache = withr::local_tempdir())
   set.seed(3)
   n <- 12
   cluster <- rep(as.character(1:6), 2)
@@ -145,4 +146,36 @@ test_that("fit_mixture fits genes with Stan", {
   )))
   expect_identical(.Random.seed, before)
   expect_identical(alone$fits$geneB, fit$fits$geneB)
+})
+
+test_that("compiled Stan models are cached on disk", {
+  dir <- withr::local_tempdir()
+  stan <- withr::local_tempfile(fileext = ".stan", lines = "model { }")
+  compiled <- 0
+  compile <- function() {
+    compiled <<- compiled + 1
+    list(model = "m")
+  }
+  usable <- function(m) identical(m, list(model = "m"))
+  m <- suppressMessages(cached_stan_model("m", stan, compile, usable, dir = dir))
+  expect_equal(compiled, 1)
+  expect_true(file.exists(stan_cache_file("m", stan, dir)))
+  # a later session loads it
+  expect_message(m2 <- cached_stan_model("m", stan, compile, usable, dir = dir),
+                 "Using the compiled m Stan model")
+  expect_equal(compiled, 1)
+  expect_identical(m2, m)
+  # another Stan code gets another cache file
+  writeLines("model { } ", stan)
+  suppressMessages(cached_stan_model("m", stan, compile, usable, dir = dir))
+  expect_equal(compiled, 2)
+  # an unusable or unreadable cache is compiled again and replaced
+  writeLines("not an rds", stan_cache_file("m", stan, dir))
+  suppressMessages(cached_stan_model("m", stan, compile, usable, dir = dir))
+  expect_equal(compiled, 3)
+  expect_identical(readRDS(stan_cache_file("m", stan, dir)), m)
+  # "" turns the cache off
+  suppressMessages(cached_stan_model("m", stan, compile, usable, dir = ""))
+  expect_equal(compiled, 4)
+  expect_length(list.files(dir, "\\.tmp$"), 0)
 })
