@@ -271,10 +271,27 @@ get_counts <- function(obj, assay = NULL) {
         fail("Assay '", assay, "' not found. Assays: ",
             paste(SeuratObject::Assays(obj), collapse = ", "))
     }
-    counts <- tryCatch(
-        SeuratObject::LayerData(obj, assay = assay, layer = "counts"),
-        error = function(e) SeuratObject::GetAssayData(obj, assay = assay, slot = "counts")
-    )
+    a <- obj[[assay]]
+    if (inherits(a, "Assay5")) {
+        # Seurat v5 may keep the counts split by sample (counts.1, counts.2,
+        # ...); LayerData() would return only the first of them
+        layers <- grep("^counts(\\.|$)", SeuratObject::Layers(a), value = TRUE)
+        if (length(layers) == 0) {
+            fail("Assay '", assay, "' has no counts layer. Layers: ",
+                paste(SeuratObject::Layers(a), collapse = ", "))
+        }
+        if (length(layers) > 1) {
+            message(sprintf("  joining the %d counts layers of assay '%s' (%s)",
+                length(layers), assay, first_few(layers)))
+            a <- SeuratObject::JoinLayers(a, layers = "counts")
+        }
+        counts <- SeuratObject::LayerData(a, layer = "counts")
+    } else {
+        counts <- tryCatch(
+            SeuratObject::LayerData(obj, assay = assay, layer = "counts"),
+            error = function(e) SeuratObject::GetAssayData(obj, assay = assay, slot = "counts")
+        )
+    }
     as(counts, "CsparseMatrix")
 }
 

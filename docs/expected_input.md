@@ -44,7 +44,7 @@ stored as `obsm/X_<split>`.
 | Requirement | Details |
 |---|---|
 | Assay | The default assay (usually `RNA`); another with `assay`, e.g. `assay = "RNA"` when the default is `integrated`. |
-| Counts | **Raw counts**: non-negative integers, genes × cells. In v5, the `counts` layer (split layers must be joined with `JoinLayers()` first); in v4, the `counts` slot. |
+| Counts | **Raw counts**: non-negative integers, genes × cells. In v5, the `counts` layer (layers split by sample, `counts.1`, `counts.2`, ..., are joined by the builder); in v4, the `counts` slot. |
 | Normalization | Done by the builder, as Seurat's LogNormalize: `log1p(counts / library size × 1e4)`. Any `data` layer already present is ignored. |
 | Genes | Unique, non-empty names; the builder sorts them. They must use the same symbols as the mixture-model output. |
 | Cells | Unique barcodes (Seurat enforces this). |
@@ -217,6 +217,7 @@ pool libraries into two replicates as the pipeline did, map them to two
 groups first).
 
 ```r
+obj[["RNA"]] <- SeuratObject::JoinLayers(obj[["RNA"]])     # v5 layers split by sample
 counts <- SeuratObject::LayerData(obj, layer = "counts")   # one split's cells
 pb <- make_pseudobulk(counts, obj$scmarco_cluster, n_samples = 2)
 fit <- fit_mixture(pb$lognorm, pb$cluster, pb$replicate)

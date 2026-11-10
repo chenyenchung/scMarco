@@ -379,6 +379,25 @@ test_that("build from one object per split with different genes and assays", {
                h5ad_layer(h5ad_open(file.path(dir, "toy.clusters.h5ad")), "pct_pos"))
 })
 
+test_that("counts split into v5 layers are joined before the build", {
+  skip_if_not_installed("SeuratObject")
+  dir <- withr::local_tempdir()
+  toy <- toy_seurat(dir)
+  obj <- readRDS(toy$path)
+  suppressMessages(seurat_to_h5ad(obj, "joined", out_dir = dir))
+  # one counts layer per sex, with the cells in another order than the object
+  split_obj <- obj
+  split_obj[["RNA"]] <- split(split_obj[["RNA"]], f = rev(toy$split))
+  expect_equal(Layers(split_obj[["RNA"]], search = "counts"), c("counts.Female", "counts.Male"))
+  msg <- run_quietly(seurat_to_h5ad(split_obj, "split", out_dir = dir))
+  expect_match(msg, "joining the 2 counts layers of assay 'RNA'", fixed = TRUE)
+  for (layer in c("pct_pos", "mean_lognorm")) {
+    expect_equal(h5ad_layer(h5ad_open(file.path(dir, "split.clusters.h5ad")), layer),
+                 h5ad_layer(h5ad_open(file.path(dir, "joined.clusters.h5ad")), layer))
+  }
+  expect_equal(get_counts(split_obj)[, Cells(obj)], get_counts(obj))
+})
+
 test_that("rhdf5's single-chunk note is dropped, other messages kept", {
   local_mocked_bindings(write_h5ad = function(...) {
     message("You created a large dataset with compression and chunking.\nThe chunk size ...")
