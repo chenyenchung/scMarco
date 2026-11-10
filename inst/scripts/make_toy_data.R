@@ -127,8 +127,9 @@ mixture_table <- function(s) {
     }
     cbind(as.data.frame(tab, check.names = FALSE), qc)
 }
+# made here, not by call_mixture(): recorded as an external binarizer
 add_probability(clusters_path, lapply(c(Male = "Male", Female = "Female"),
-                                      mixture_table))
+                                      mixture_table), external = TRUE)
 
 set_cluster_names(clusters_path, setNames(cluster_names, clusters))
 set_cluster_metadata(clusters_path, data.frame(

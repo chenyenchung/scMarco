@@ -94,7 +94,7 @@ test_that("exact fit parameters reach the dataset unchanged", {
     tab$exprType <- "bimodal"
     tab
   })
-  suppressMessages(suppressWarnings(add_probability(path, tables)))
+  suppressMessages(suppressWarnings(add_probability(path, tables, external = TRUE)))
   ds <- ds_load(paste0("toy", runif(1)), list(label = "Toy", clusters = path))
   expect_identical(unname(ds$mixture$on_level[1, c("Male", "Female")]),
                    unname(on_level))

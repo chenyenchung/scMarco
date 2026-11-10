@@ -208,6 +208,7 @@ of a metadata column (`method = "metadata"`).
 seurat_to_h5ad("neurons.rds", "neurons", out_dir = "data",
                split_col = "sex", cluster_col = "seurat_clusters",
                split_label = "sex")
+# tables from call_mixture(); add external = TRUE for the pipeline's tables
 add_probability("data/neurons.clusters.h5ad",
                 c(Male = "male_prob.rds", Female = "female_prob.rds"))
 ```

@@ -95,7 +95,7 @@ make_pair <- function(dir) {
     cpath, obs_split, obs_cluster, splits, clusters, genes,
     layers = list(prob = prob, pct_pos = prob / 2),
     is_bimodal = c(TRUE, TRUE, FALSE), bimodal_by_split = bim,
-    n_cells = c(2, 1, 2), split_label = "sex"
+    n_cells = c(2, 1, 2), split_label = "sex", binarization = test_binarization()
   )
   x <- Matrix::sparseMatrix(
     i = c(1, 2, 4, 5, 3), j = c(1, 1, 1, 2, 3), x = c(1.5, 2, 0.5, 3, 1),

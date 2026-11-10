@@ -97,8 +97,14 @@ test_that("build from metadata columns, then binarize from per-split files", {
 
   saveRDS(male_prob(), file.path(dir, "male.rds"))
   saveRDS(female_prob(), file.path(dir, "female.rds"))
+  # hand-made tables record no binarizer: refused unless marked external
+  expect_error(run_quietly(add_probability(clusters, c(Male = file.path(dir, "male.rds"),
+                                                       Female = file.path(dir, "female.rds")))),
+               "external = TRUE")
+  expect_false("prob" %in% h5ad_open(clusters)$layers)
   log <- run_quietly(add_probability(clusters, c(Male = file.path(dir, "male.rds"),
-                                                 Female = file.path(dir, "female.rds"))))
+                                                 Female = file.path(dir, "female.rds")),
+                                     external = TRUE))
   expect_match(log, "Male 3, Female 2")
 
   val <- validate_h5ad(clusters, cells)
@@ -109,7 +115,8 @@ test_that("build from metadata columns, then binarize from per-split files", {
   expect_equal(ds$cluster_labels[["1"]], "Mi4 (1)")
   meta <- ds$clusters_h$uns$scmarco
   expect_equal(meta$binarization$method, "mixture model")
-  expect_equal(meta$binarization$version, SCMARCO_BINARIZER_VERSION)
+  # hand-made tables do not come from scMarco's binarizer
+  expect_equal(meta$binarization$version, BINARIZER_EXTERNAL)
   expect_equal(meta$binarization$source, sprintf("Male=%s,Female=%s", file.path(dir, "male.rds"),
                                                  file.path(dir, "female.rds")))
   expect_equal(meta$split_label, "sex")
@@ -120,12 +127,13 @@ test_that("build from metadata columns, then binarize from per-split files", {
 
   # binarizing again (named-list RDS) replaces the probabilities
   saveRDS(list(Male = male_prob(), Female = female_prob()), file.path(dir, "both.rds"))
-  log <- run_quietly(add_probability(clusters, file.path(dir, "both.rds")))
+  log <- run_quietly(add_probability(clusters, file.path(dir, "both.rds"), external = TRUE))
   expect_match(log, "replacing them")
   expect_toy_binarized(clusters, cells)
 
   # in-memory tables work as well as files
-  log <- run_quietly(add_probability(clusters, list(Male = male_prob(), Female = female_prob())))
+  log <- run_quietly(add_probability(clusters, list(Male = male_prob(), Female = female_prob()),
+                                     external = TRUE))
   ds <- expect_toy_binarized(clusters, cells)
   expect_equal(ds$clusters_h$uns$scmarco$binarization$source, "Male=<table>,Female=<table>")
 })
@@ -154,7 +162,7 @@ test_that("legacy identities and wide table still build in one step", {
   # the wide table has no fit parameters
   expect_warning(
     log <- run_quietly(seurat_to_h5ad(toy$path, "toy", out_dir = dir,
-                                      prob = file.path(dir, "prob.rds"),
+                                      prob = file.path(dir, "prob.rds"), external = TRUE,
                                       split_order = c("Male", "Female"))),
     "mixture-model plot will be unavailable"
   )
@@ -360,7 +368,8 @@ test_that("build from one object per split with different genes and assays", {
   saveRDS(male_prob(), file.path(dir, "male_prob.rds"))
   saveRDS(female_prob()[1:3, ], file.path(dir, "female_prob.rds"))
   suppressWarnings(suppressMessages(add_probability(
-    clusters, c(Male = file.path(dir, "male_prob.rds"), Female = file.path(dir, "female_prob.rds"))
+    clusters, c(Male = file.path(dir, "male_prob.rds"), Female = file.path(dir, "female_prob.rds")),
+    external = TRUE
   )))
   # splits keep the order of `seurat`
   ds <- expect_toy_binarized(clusters, cells)

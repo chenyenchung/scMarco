@@ -47,9 +47,14 @@ them, e.g. chunks of genes fit in parallel.}
 A \code{scmarco_mixture} list: \code{fits}, one fit per gene (\code{bimodal}
 and \code{unimodal} posterior medians, \code{elpd}), the input \code{lognorm},
 \code{cluster} and \code{replicate}, the fit \code{settings} (\code{n_iter}, \code{n_folds},
-\code{seed}, \code{cores}) and \code{convergence} (one row per gene: the largest Rhat
+\code{seed}, \code{cores}), \code{convergence} (one row per gene: the largest Rhat
 and smallest effective sample size of the bimodal and unimodal fits'
-parameters, and \code{converged}).
+parameters, and \code{converged}), and the versions that make up its contract:
+\code{schema_version} (the scMarco schema, as \code{format_version} of the
+dataset files) and \code{binarizer_version}
+(of the binarizer that fit it). \code{\link[=merge_mixture_fits]{merge_mixture_fits()}} and
+\code{\link[=call_mixture]{call_mixture()}} refuse objects whose versions differ from the running
+scMarco's, e.g. fits saved by an older release.
 }
 \description{
 Fits the log-normalized expression of each gene across pseudobulk samples

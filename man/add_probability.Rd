@@ -4,7 +4,7 @@
 \alias{add_probability}
 \title{Add mixture-model probabilities to a dataset}
 \usage{
-add_probability(clusters, prob, validate = TRUE)
+add_probability(clusters, prob, validate = TRUE, external = FALSE)
 }
 \arguments{
 \item{clusters}{Path of the \code{.clusters.h5ad} file.}
@@ -17,6 +17,12 @@ together, as one model).}
 
 \item{validate}{Check the file afterwards with \code{\link[=validate_h5ad]{validate_h5ad()}} and stop
 on errors.}
+
+\item{external}{\code{TRUE} to accept tables that do not come from
+\code{\link[=call_mixture]{call_mixture()}} (they record no binarizer version), e.g. output of the
+mixture_modeling_smk pipeline or hand-made tables, and record every split
+as \code{"external"}. Without it such tables are refused, so the source of a
+dataset's probabilities is never unknown by accident.}
 }
 \value{
 The \code{\link[=validate_h5ad]{validate_h5ad()}} result (\code{NULL} without \code{validate}),
@@ -34,6 +40,13 @@ the probability of expression, and QC columns, among them \code{exprType}
 (\code{"bimodal"} marks the genes used in that split) and, for the mixture
 model plot, \code{bimodal.on_level}, \code{bimodal.off_level}, \code{bimodal.sd} and
 \code{bimodal.pi}.
+
+The dataset records the binarizer version that made the tables
+(\code{uns/scmarco/binarization/version}): the one \code{\link[=call_mixture]{call_mixture()}} stamps on
+its output, or \code{"external"} for tables from elsewhere (the
+mixture_modeling_smk pipeline, hand-made tables), which must be asked for
+with \code{external = TRUE}. Every split's table must come from the same
+binarizer.
 }
 \examples{
 toy <- system.file("extdata", "toy.clusters.h5ad", package = "scMarco")
@@ -50,5 +63,6 @@ tables <- lapply(c(Male = "Male", Female = "Female"), function(s) {
     tab$exprType <- "bimodal"
     tab
 })
-suppressWarnings(add_probability(path, tables))
+# hand-made tables record no binarizer, so they must be marked external
+suppressWarnings(add_probability(path, tables, external = TRUE))
 }

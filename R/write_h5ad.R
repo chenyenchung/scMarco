@@ -1,22 +1,41 @@
 # Shared writers for the scMarco h5ad schema (format_version 2.0).
-# Used by lib_build.R and lib_migrate.R; see README.md for the schema.
+# Used by build.R and migrate.R; see docs/expected_input.md for the contract.
 
-# Schema of the h5ad files. Bump it when the layout changes; files with an
-# older version then need an update step before the app loads them.
+# Versions of the contract between fitting, the dataset files and the app.
+#
+# scMarco schema version: the layout of the objects in the contract, i.e.
+# the h5ad files (uns/scmarco/format_version, in both files) and the fit
+# objects of fit_mixture() (schema_version). v1 was the legacy SQLite
+# database, which migrate.R converts; v2 is still being consolidated, so
+# required fields are added to it without a bump until it is released. Bump
+# it when the layout changes after that; the app refuses any other version.
 SCMARCO_FORMAT_VERSION <- "2.0"
-# Version of the binarization (uns/scmarco/binarization/version), for
-# information only. Bump it when a fix changes the probabilities, so that
-# datasets binarized with an earlier version are known to need a rerun.
+# Version of the binarizer: fit_mixture() + call_mixture(). Bump it when a
+# change alters the fits or the probabilities; datasets binarized with an
+# older version then load with a warning to rerun the binarizer, and fits of
+# another version cannot be merged or called. Recorded in fits, in
+# call_mixture() tables and in uns/scmarco/binarization/version.
 SCMARCO_BINARIZER_VERSION <- "1.0"
+# binarization/version of probabilities that did not come from scMarco's
+# binarizer: tables of the mixture_modeling_smk pipeline, hand-made tables,
+# and migrated legacy databases
+BINARIZER_EXTERNAL <- "external"
 
 write_clusters_h5ad <- function(path, obs_split, obs_cluster, splits, clusters,
                                 genes, layers, is_bimodal = NULL,
                                 bimodal_by_split = NULL, n_cells = NULL,
                                 split_label = "split", ordered_splits = FALSE,
-                                extra_uns = list()) {
+                                binarization = NULL, extra_uns = list()) {
     # layers: named list of n_obs x n_genes numeric matrices. Without "prob"
     #   the file is in the *built* state; add_probability_layer() binarizes it.
     # bimodal_by_split: optional n_genes x n_splits logical matrix
+    # binarization: list(method, source, date, version), required with a
+    #   "prob" layer (see binarization_record())
+    if ("prob" %in% names(layers)) {
+        check_binarization_record(binarization)
+    } else if (!is.null(binarization)) {
+        stop("binarization given without a prob layer")
+    }
     obs <- data.frame(
         split = factor(obs_split, levels = splits, ordered = ordered_splits),
         cluster = factor(obs_cluster, levels = clusters),
@@ -39,6 +58,7 @@ write_clusters_h5ad <- function(path, obs_split, obs_cluster, splits, clusters,
         split_order = splits,
         ordered_splits = ordered_splits
     )
+    if (!is.null(binarization)) uns$binarization <- binarization
     if (!is.null(bimodal_by_split)) {
         # anndataR writes logical matrices as flat vectors; store 0/1 integers
         m <- bimodal_by_split[genes, splits, drop = FALSE]
@@ -64,12 +84,14 @@ write_clusters_h5ad <- function(path, obs_split, obs_cluster, splits, clusters,
 
 add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
                                   mixture = NULL, mixture_models = NULL) {
+    check_binarization_record(binarization)
     # Binarize a clusters file in place: write layers/prob, var/is_bimodal,
     # varm/bimodal_by_split, varm/mixture_* and uns/scmarco/binarization.
     # Replaces any earlier probabilities; obs, the other layers and uns are kept.
     # prob: n_obs x n_genes matrix in obs order
     # bimodal_by_split: n_genes x n_splits logical matrix, columns named by split
-    # binarization: list(method, source, date); the binarizer version is added
+    # binarization: list(method, source, date, version), see
+    #   binarization_record()
     # mixture: optional named list of n_genes x n_splits fit parameters
     #   (on_level, off_level, sd, pi), columns named by split
     # mixture_models: split -> the model it was fit in; splits sharing a model
@@ -106,7 +128,7 @@ add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
 
     uns <- ad$uns
     uns$scmarco$bimodal_splits <- splits
-    uns$scmarco$binarization <- c(binarization, version = SCMARCO_BINARIZER_VERSION)
+    uns$scmarco$binarization <- binarization
     uns$scmarco$mixture_models <- NULL
     if (!is.null(mixture)) {
         if (is.null(mixture_models)) mixture_models <- setNames(splits, splits)
@@ -158,6 +180,40 @@ write_cells_h5ad <- function(path, x, barcodes, cell_split, cell_cluster,
     write_h5ad_rechunked(ad, path)
     rechunk_h5ad(path, n_obs = nrow(obs), sparse_x = TRUE)
     invisible(path)
+}
+
+binarization_record <- function(method, source, version) {
+    # uns/scmarco/binarization of a binarized dataset
+    list(method = method, source = source, date = format(Sys.Date()),
+        version = version)
+}
+
+check_binarization_record <- function(b) {
+    need <- c("method", "source", "date", "version")
+    if (!is.list(b) || !all(need %in% names(b))) {
+        stop("binarization must be a list with ", paste(need, collapse = ", "))
+    }
+    if (!valid_binarizer_version(b$version)) {
+        stop("binarization version must be a version number or \"",
+            BINARIZER_EXTERNAL, "\", not ", format(b$version))
+    }
+    invisible(TRUE)
+}
+
+valid_binarizer_version <- function(v) {
+    length(v) == 1 && is.character(v) && !is.na(v) &&
+        (v == BINARIZER_EXTERNAL || grepl("^[0-9]+(\\.[0-9]+)+$", v))
+}
+
+binarizer_status <- function(v) {
+    # How a dataset's binarization/version relates to this scMarco's:
+    # "missing", "invalid", "external", "current", "older" or "newer"
+    if (is.null(v) || length(v) == 0) return("missing")
+    v <- as.character(v)
+    if (!valid_binarizer_version(v)) return("invalid")
+    if (v == BINARIZER_EXTERNAL) return("external")
+    cmp <- compareVersion(v, SCMARCO_BINARIZER_VERSION)
+    c("older", "current", "newer")[cmp + 2]
 }
 
 rewrite_obs <- function(path, edit) {

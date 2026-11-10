@@ -4,7 +4,7 @@ make_meta_toy <- function(dir) {
   suppressMessages(suppressWarnings(write_clusters_h5ad(
     cpath, c("F", "F", "F", "F", "M", "M", "M"), c("1", "2", "3", "4", "1", "2", "3"),
     c("F", "M"), c("1", "2", "3", "4"), c("a", "b"),
-    layers = list(prob = matrix(0.5, 7, 2))
+    layers = list(prob = matrix(0.5, 7, 2)), binarization = test_binarization()
   )))
   cpath
 }

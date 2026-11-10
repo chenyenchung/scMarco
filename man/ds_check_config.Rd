@@ -16,7 +16,9 @@ entries as described in \code{\link[=ds_load]{ds_load()}}.}
 \description{
 Checks every configured dataset before any is loaded, so that a bad config
 fails at once with one message listing each problem and its fix: missing
-files, files in another \code{format_version}, datasets without probabilities,
+files, files in another \code{format_version}, datasets without probabilities
+or without a usable binarizer version (one older than this scMarco's
+binarizer only warns),
 unknown \code{subset_by} levels, a \code{split_order} that does not match the file,
 and \code{trend} views the data cannot support.
 }

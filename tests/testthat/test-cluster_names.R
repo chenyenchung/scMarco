@@ -6,7 +6,8 @@ make_legacy_pair <- function(dir) {
   prob <- matrix(seq(0.1, 1, length.out = 10), 5, 2)
   cpath <- file.path(dir, "toy.clusters.h5ad")
   write_clusters_h5ad(cpath, obs_split, obs_cluster, c("F", "M"), clusters,
-                      c("a", "b"), layers = list(prob = prob))
+                      c("a", "b"), layers = list(prob = prob),
+                      binarization = test_binarization())
   xpath <- file.path(dir, "toy.cells.h5ad")
   write_cells_h5ad(
     xpath, Matrix::Matrix(matrix(1, 4, 2), sparse = TRUE),
@@ -111,7 +112,8 @@ test_that("clusters with no rows in any split keep only their ID", {
   cpath <- file.path(dir, "ghost.clusters.h5ad")
   suppressMessages(suppressWarnings(write_clusters_h5ad(
     cpath, c("F", "F"), c("Mi4 (154)", "12"), "F", c("12", "Ghost (77)", "Mi4 (154)"),
-    c("a", "b"), layers = list(prob = matrix(0.5, 2, 2))
+    c("a", "b"), layers = list(prob = matrix(0.5, 2, 2)),
+    binarization = test_binarization()
   )))
   expect_warning(suppressMessages(migrate_cluster_labels(cpath)),
                  "only their ID is kept: Ghost \\(77\\)")

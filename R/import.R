@@ -150,7 +150,9 @@ check_labels <- function(split, cluster) {
 read_prob <- function(prob) {
     # Mixture-model output -> named list split -> table (genes x clusters + QC
     # columns), with attr "models": split -> the mixture model it was fit in,
-    # and attr "source": where the tables came from.
+    # attr "binarizer": split -> the binarizer version its table records
+    # (BINARIZER_EXTERNAL when it records none), and attr "source": where the
+    # tables came from.
     # prob: a character vector of .rds paths or a list of tables / paths;
     #   each item is one of
     #   named, c(Male = "a.rds") or list(Male = df): one split's table,
@@ -195,11 +197,64 @@ read_prob <- function(prob) {
         models <- c(models, setNames(model, names(add)))
     }
     attr(tables, "models") <- models
+    attr(tables, "binarizer") <- vapply(tables, table_binarizer, "")
     src <- ifelse(is_path, vapply(prob, function(x) if (is.character(x)) x[1] else "", ""),
         "<table>")
     attr(tables, "source") <- paste(ifelse(item_names == "", src, paste0(item_names, "=", src)),
         collapse = ",")
     tables
+}
+
+table_binarizer <- function(tab) {
+    # Binarizer version a call_mixture() table records, else external
+    v <- attr(tab, "scmarco_binarizer", exact = TRUE)
+    if (is.null(v)) return(BINARIZER_EXTERNAL)
+    if (!valid_binarizer_version(v)) fail("Table records an invalid binarizer version: ", format(v))
+    v
+}
+
+prob_binarizer <- function(tables, external = FALSE) {
+    # The one binarizer version to record for a dataset's tables. Tables that
+    # record no scMarco binarizer (not from call_mixture()) are refused unless
+    # `external` says so; then every split is recorded as external. Tables of
+    # different binarizers would make probabilities that are not comparable
+    # across splits.
+    v <- attr(tables, "binarizer")
+    unknown <- names(v)[v == BINARIZER_EXTERNAL]
+    if (isTRUE(external)) {
+        known <- v[v != BINARIZER_EXTERNAL]
+        if (length(known) > 0) {
+            warning("external = TRUE: recording every split as \"", BINARIZER_EXTERNAL,
+                "\", although the tables of ", paste(names(known), collapse = ", "),
+                " record binarizer ", paste(unique(known), collapse = ", "),
+                ". Drop external = TRUE to keep their version.", call. = FALSE)
+        }
+        return(BINARIZER_EXTERNAL)
+    }
+    if (length(unknown) > 0) {
+        fail("The table(s) of split(s) ", first_few(unknown), " do not record a scMarco ",
+            "binarizer version, so where their probabilities came from is unknown. ",
+            "Make them with call_mixture(), or, if they really come from elsewhere ",
+            "(e.g. the mixture_modeling_smk pipeline), pass external = TRUE to record ",
+            "every split as \"", BINARIZER_EXTERNAL, "\".")
+    }
+    if (length(unique(v)) > 1) {
+        groups <- split(names(v), v)
+        fail("The splits' tables come from different binarizers (",
+            paste(sprintf("%s: %s", names(groups), vapply(groups, paste, "", collapse = ", ")),
+                collapse = "; "),
+            "). Make every table with the same binarizer, e.g. call_mixture() of this scMarco.")
+    }
+    status <- binarizer_status(unname(v[1]))
+    if (status == "newer") {
+        fail("The tables were made by binarizer ", v[1], ", newer than this scMarco's (",
+            SCMARCO_BINARIZER_VERSION, "); update scMarco")
+    }
+    if (status == "older") {
+        warning("The tables were made by binarizer ", v[1], "; this scMarco's is ",
+            SCMARCO_BINARIZER_VERSION, ". Consider refitting.", call. = FALSE)
+    }
+    unname(v[1])
 }
 
 legacy_wide_to_split_tables <- function(df) {

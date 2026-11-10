@@ -10,6 +10,7 @@ functions of the scMarco package (`library(scMarco)`):
 
 ```r
 seurat_to_h5ad("obj.rds", "dmel_mixed", split_label = "sex")
+# tables from call_mixture(), saved with saveRDS()
 add_probability("data/dmel_mixed.clusters.h5ad",
                 c(Male = "male_prob.rds", Female = "female_prob.rds"))
 ```
@@ -264,7 +265,15 @@ add_probability("data/<id>.clusters.h5ad", "prob_by_split.rds")
 
 # tables already in memory
 add_probability("data/<id>.clusters.h5ad", list(Male = male_df, Female = female_df))
+
+# tables from outside call_mixture(), e.g. the mixture_modeling_smk pipeline
+add_probability("data/<id>.clusters.h5ad",
+                c(Male = "male_smk.rds", Female = "female_smk.rds"), external = TRUE)
 ```
+
+Tables record the binarizer that made them (see *Versions* below). A table
+without one, i.e. not made by `call_mixture()`, is refused unless
+`external = TRUE` is given; every split is then recorded as `"external"`.
 
 The split names must match the build step. Per-split bimodality is stored in
 `varm/bimodal_by_split`. A gene counts as bimodal in `var/is_bimodal` when it
@@ -330,13 +339,29 @@ The output is described fully in the README ("Data format"). In short:
 | State | Has `layers/prob` | `uns/scmarco/binarization` | Validator | App |
 |---|---|---|---|---|
 | *built* | no | absent | `validate_h5ad(stage = "built")` passes | **refuses to start** |
-| *binarized* | yes | `method`, `source` (the `prob` files, `<table>` for one passed in memory), `date`, `version` | `validate_h5ad()` passes | loads |
+| *binarized* | yes | `method`, `source` (the `prob` files, `<table>` for one passed in memory), `date`, `version` (binarizer; required) | `validate_h5ad()` passes | loads |
 
-`uns/scmarco/format_version` is the schema version; the app refuses a file
-with another one. `uns/scmarco/binarization/version` is the binarizer version,
-for information: it is bumped when a fix changes the probabilities, so a
-dataset with an older one needs `add_probability()` rerun. Files binarized
-before it was added lack it, and the validator does not require it.
+### Versions
+
+Every object passed from fitting to the app records two versions:
+
+| Version | Where | Meaning |
+|---|---|---|
+| scMarco schema (`2.0`) | `uns/scmarco/format_version` of both h5ad files; `schema_version` of a `fit_mixture()` object | the layout of the object. v1 was the legacy SQLite database (convert it with `sqlite_to_h5ad()`); v2 is still being consolidated, so fields it requires are added without a bump until it is released |
+| binarizer (`1.0`) | `binarizer_version` of a `fit_mixture()` object; attribute `scmarco_binarizer` of a `call_mixture()` table; `uns/scmarco/binarization/version` | the binarizer (`fit_mixture()` + `call_mixture()`) that made the probabilities; bumped when a change alters them. `"external"`: tables from outside scMarco's binarizer (mixture_modeling_smk pipeline, hand-made, migrated legacy databases) |
+
+| Step | Checks |
+|---|---|
+| `merge_mixture_fits()`, `call_mixture()` | refuse fits of another schema or binarizer version, or saved before fits recorded them (refit); merged chunks must share `n_iter`, `n_folds` and `seed` |
+| `add_probability()`, `seurat_to_h5ad(prob = )` | record the tables' binarizer, not the package's; tables recording none are refused unless `external = TRUE`, which records every split as `"external"` (with a warning if some tables did record one); otherwise every split's table must come from the same binarizer; a newer one is refused, an older one warns |
+| writer | refuses a `prob` layer without a binarization record |
+| `validate_h5ad()` | binarized files need `binarization` with `method`, `source`, `date` and a valid `version`; newer binarizer is an error, older a warning; the cells file's `format_version` must match |
+| app (`ds_check_config()`, `ds_load()`) | refuses another `format_version` (either file), a missing, invalid or newer binarizer version; warns on an older one; shows the binarizer in the sidebar |
+
+A `call_mixture()` table keeps its binarizer attribute through `saveRDS()`,
+but not through subsetting; a subset table counts as `"external"`. Files
+binarized before the version was required can be given the record (as
+`"external"`) with `deploy/misc/stamp_binarizer_version.R`.
 
 Migrated legacy datasets are binarized from the start. Their `uns/scmarco/source`
 records where they came from, e.g. `sqlite:db.sqlite:ozel_2021_new`.

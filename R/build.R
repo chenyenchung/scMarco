@@ -41,6 +41,8 @@
 #' @param ordered The splits have a natural order (stages, doses); needs
 #'   `split_order` when the splits come from one object.
 #' @param prob Optional mixture-model output, as for [add_probability()].
+#' @param external As for [add_probability()]: `TRUE` accepts `prob` tables
+#'   that do not come from [call_mixture()].
 #' @param umaps Optional folder of Seurat objects (`.rds`) with a `"umap"`
 #'   reduction on a subset of the cells; the file name before the first `"_"`
 #'   names the reduction.
@@ -72,7 +74,8 @@ seurat_to_h5ad <- function(seurat, dataset, out_dir = "data",
                            cluster_col = "scmarco_cluster", assay = NULL,
                            split_label = "split", split_order = NULL,
                            ordered = FALSE, prob = NULL, umaps = NULL,
-                           reduction = "umap", exclude_clusters = character(0)) {
+                           reduction = "umap", exclude_clusters = character(0),
+                           external = FALSE) {
     if (!requireNamespace("SeuratObject", quietly = TRUE)) {
         fail("seurat_to_h5ad() needs the SeuratObject package")
     }
@@ -81,6 +84,8 @@ seurat_to_h5ad <- function(seurat, dataset, out_dir = "data",
     inputs <- seurat_inputs(seurat)
     # Read prob before the slow steps so a bad path fails early
     prob_tables <- if (!is.null(prob)) read_prob(prob) else NULL
+    # checked before the build, which can take long
+    prob_version <- if (!is.null(prob_tables)) prob_binarizer(prob_tables, external)
     per_split <- !is.null(names(inputs))
     if (per_split && !identical(split_col, "scmarco_split")) {
         fail("split_col cannot be used with one object per split: ",
@@ -227,12 +232,11 @@ seurat_to_h5ad <- function(seurat, dataset, out_dir = "data",
 
     if (!is.null(prob_tables)) {
         p <- assemble_prob(prob_tables, obs_split, obs_cluster, splits, genes)
-        add_probability_layer(clusters_path, p$prob, p$bimodal_by_split, list(
-            method = "mixture model", source = attr(prob_tables, "source"),
-            date = format(Sys.Date())
-        ), mixture = p$mixture, mixture_models = p$mixture_models)
-        message(sprintf("Binarized %s: %d genes bimodal in at least one %s",
-            clusters_path, sum(rowSums(p$bimodal_by_split) > 0), split_label))
+        add_probability_layer(clusters_path, p$prob, p$bimodal_by_split,
+            binarization_record("mixture model", attr(prob_tables, "source"), prob_version),
+            mixture = p$mixture, mixture_models = p$mixture_models)
+        message(sprintf("Binarized %s (binarizer %s): %d genes bimodal in at least one %s",
+            clusters_path, prob_version, sum(rowSums(p$bimodal_by_split) > 0), split_label))
     } else {
         message("Built without probabilities; add them before use with:\n  ",
             sprintf('add_probability("%s", c(<split> = "<file.rds>", ...))', clusters_path))
@@ -340,12 +344,24 @@ expand_genes <- function(x, genes) {
 #' model plot, `bimodal.on_level`, `bimodal.off_level`, `bimodal.sd` and
 #' `bimodal.pi`.
 #'
+#' The dataset records the binarizer version that made the tables
+#' (`uns/scmarco/binarization/version`): the one [call_mixture()] stamps on
+#' its output, or `"external"` for tables from elsewhere (the
+#' mixture_modeling_smk pipeline, hand-made tables), which must be asked for
+#' with `external = TRUE`. Every split's table must come from the same
+#' binarizer.
+#'
 #' @param clusters Path of the `.clusters.h5ad` file.
 #' @param prob The mixture model's output, one table per split: a named
 #'   vector of `.rds` paths (`c(Male = "male.rds", Female = "female.rds")`),
 #'   a named list of data.frames, an `.rds` path holding such a list, or a
 #'   legacy wide table with `"<split>@<cluster>"` columns (splits fit
 #'   together, as one model).
+#' @param external `TRUE` to accept tables that do not come from
+#'   [call_mixture()] (they record no binarizer version), e.g. output of the
+#'   mixture_modeling_smk pipeline or hand-made tables, and record every split
+#'   as `"external"`. Without it such tables are refused, so the source of a
+#'   dataset's probabilities is never unknown by accident.
 #' @param validate Check the file afterwards with [validate_h5ad()] and stop
 #'   on errors.
 #'
@@ -366,20 +382,24 @@ expand_genes <- function(x, genes) {
 #'     tab$exprType <- "bimodal"
 #'     tab
 #' })
-#' suppressWarnings(add_probability(path, tables))
+#' # hand-made tables record no binarizer, so they must be marked external
+#' suppressWarnings(add_probability(path, tables, external = TRUE))
 #' @export
-add_probability <- function(clusters, prob, validate = TRUE) {
+add_probability <- function(clusters, prob, validate = TRUE, external = FALSE) {
     ch <- h5ad_open(clusters)
+    tables <- read_prob(prob)
+    version <- prob_binarizer(tables, external)
     if ("prob" %in% ch$layers) {
         message(clusters, " already has probabilities; replacing them")
     }
     splits <- levels(ch$obs$split)
-    tables <- read_prob(prob)
     p <- assemble_prob(tables, as.character(ch$obs$split), as.character(ch$obs$cluster),
         splits, ch$genes)
-    add_probability_layer(clusters, p$prob, p$bimodal_by_split, list(
-        method = "mixture model", source = attr(tables, "source"), date = format(Sys.Date())
-    ), mixture = p$mixture, mixture_models = p$mixture_models)
+    add_probability_layer(clusters, p$prob, p$bimodal_by_split,
+        binarization_record("mixture model", attr(tables, "source"), version),
+        mixture = p$mixture, mixture_models = p$mixture_models)
+    message("Binarizer version: ", version, if (version == BINARIZER_EXTERNAL)
+        " (the tables do not come from call_mixture() of a known scMarco)")
     groups <- split(names(p$mixture_models), p$mixture_models)
     message("Mixture models: ", paste(vapply(groups, paste, "", collapse = " + "),
         collapse = "; "))

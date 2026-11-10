@@ -15,6 +15,13 @@
   model code (https://github.com/fredpdavis/opticlobe; Davis et al. 2020), released
   under the MIT license with his permission. Its fit parameters are kept unrounded,
   so the mixture-model plot draws the exact fitted curves.
+* Fits, `call_mixture()` tables and datasets record the scMarco schema
+  version (2.0) and the binarizer version (1.0), and each step checks them:
+  fits of another version cannot be merged or called, `add_probability()`
+  records the tables' binarizer, refuses tables from outside scMarco's
+  binarizer unless `external = TRUE` (recorded as `"external"`) and refuses
+  mixed ones, and the validator and the app
+  require the binarizer version of a binarized dataset.
 * `make_pseudobulk()` pools each cluster's raw counts into pseudobulk samples
   for `fit_mixture()` as `Seurat::AggregateExpression()` does (summed counts,
   then LogNormalize): random parts (sampling without replacement) or the

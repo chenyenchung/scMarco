@@ -28,7 +28,7 @@
 #' @importFrom methods as
 #' @importFrom stats setNames aggregate ave dnorm quantile plogis qlogis
 #' @importFrom markdown mark_html
-#' @importFrom utils head read.delim write.csv write.table
+#' @importFrom utils compareVersion head read.delim write.csv write.table
 #' @keywords internal
 "_PACKAGE"
 

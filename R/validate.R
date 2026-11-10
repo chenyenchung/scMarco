@@ -5,8 +5,9 @@
 #'
 #' Checks a clusters file, and optionally its cells file, against the scMarco
 #' h5ad format (format_version 2.0): obs layout and labels, cluster names and
-#' metadata, layer shapes and ranges, bimodality and mixture-model fields, and
-#' the agreement of the cells file with the clusters file.
+#' metadata, layer shapes and ranges, the binarization record and its
+#' binarizer version, bimodality and mixture-model fields, and the agreement
+#' of the cells file with the clusters file.
 #'
 #' @param clusters Path of the `.clusters.h5ad` file.
 #' @param cells Optional path of the `.cells.h5ad` file (`""` for none).
@@ -95,11 +96,24 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
         err("layers/prob is missing; add it with add_probability() ",
             "(or validate with stage = \"built\")")
     }
-    if (binarized && !is.null(meta$binarization)) {
-        missing <- setdiff(c("method", "source", "date"), names(meta$binarization))
-        if (length(missing) > 0) {
+    if (binarized) {
+        b <- meta$binarization
+        missing <- setdiff(c("method", "source", "date", "version"), names(b))
+        if (is.null(b)) {
+            err("uns/scmarco/binarization is missing; rerun add_probability()")
+        } else if (length(missing) > 0) {
             err("uns/scmarco/binarization lacks ", paste(missing, collapse = ", "))
         }
+        switch(binarizer_status(b$version),
+            invalid = err("uns/scmarco/binarization/version is not a version number or \"",
+                BINARIZER_EXTERNAL, "\": ", b$version),
+            newer = err("binarizer version ", b$version, " is newer than this scMarco's (",
+                SCMARCO_BINARIZER_VERSION, "); update scMarco"),
+            older = warn("binarized with binarizer ", b$version, "; this scMarco's is ",
+                SCMARCO_BINARIZER_VERSION, ": consider refitting"),
+            NULL)
+    } else if (!is.null(meta$binarization)) {
+        err("uns/scmarco/binarization is present but layers/prob is missing")
     }
     for (layer in intersect(c("prob", "pct_pos", "mean_lognorm"), ch$layers)) {
         m <- h5ad_layer(ch, layer)
@@ -139,6 +153,11 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
 
     if (nzchar(cells)) {
         xh <- h5ad_open(cells)
+        cv <- xh$uns$scmarco$format_version
+        if (!identical(as.character(cv), SCMARCO_FORMAT_VERSION)) {
+            err("cells format_version is ", if (is.null(cv)) "missing" else cv,
+                ", expected ", SCMARCO_FORMAT_VERSION)
+        }
         if (!identical(xh$x_encoding, "csc_matrix")) {
             err("cells X is ", xh$x_encoding, "; per-gene reads need csc_matrix")
         }

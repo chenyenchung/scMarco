@@ -17,7 +17,8 @@ seurat_to_h5ad(
   prob = NULL,
   umaps = NULL,
   reduction = "umap",
-  exclude_clusters = character(0)
+  exclude_clusters = character(0),
+  external = FALSE
 )
 }
 \arguments{
@@ -60,6 +61,9 @@ when the default \code{"umap"} is missing, the build warns and goes on
 without it.}
 
 \item{exclude_clusters}{Cluster IDs whose cells are dropped.}
+
+\item{external}{As for \code{\link[=add_probability]{add_probability()}}: \code{TRUE} accepts \code{prob} tables
+that do not come from \code{\link[=call_mixture]{call_mixture()}}.}
 }
 \value{
 The paths of the two files (\code{clusters}, \code{cells}), invisibly.

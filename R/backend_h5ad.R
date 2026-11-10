@@ -309,11 +309,28 @@ format_problem <- function(path) {
         path, found, SCMARCO_FORMAT_VERSION)
 }
 
+binarizer_problem <- function(path) {
+    # NULL when the dataset's binarizer version can be used, else what is
+    # wrong and the fix. An older binarizer is usable: ds_check_config() warns.
+    obj <- "uns/scmarco/binarization/version"
+    v <- if (h5ad_exists(path, obj)) as.character(h5read(path, obj))
+    switch(binarizer_status(v),
+        missing = sprintf(paste0("%s does not record its binarizer version ",
+            "(uns/scmarco/binarization/version); rerun add_probability(), or ",
+            "rebuild the dataset"), path),
+        invalid = sprintf("%s has an invalid binarizer version: %s", path, v),
+        newer = sprintf("%s was binarized by binarizer %s, newer than this scMarco's (%s); update scMarco",
+            path, v, SCMARCO_BINARIZER_VERSION),
+        NULL)
+}
+
 #' Check the datasets of an app config
 #'
 #' Checks every configured dataset before any is loaded, so that a bad config
 #' fails at once with one message listing each problem and its fix: missing
-#' files, files in another `format_version`, datasets without probabilities,
+#' files, files in another `format_version`, datasets without probabilities
+#' or without a usable binarizer version (one older than this scMarco's
+#' binarizer only warns),
 #' unknown `subset_by` levels, a `split_order` that does not match the file,
 #' and `trend` views the data cannot support.
 #'
@@ -339,7 +356,19 @@ ds_check_config <- function(datasets) {
                 "- %s: %s has no probabilities yet. Add them with\n    add_probability(\"%s\", c(<split> = \"<file.rds>\", ...))  # library(scMarco)",
                 id, path, path
             ))
+        } else if (!is.null(msg <- binarizer_problem(path))) {
+            problems <- c(problems, sprintf("- %s: %s", id, msg))
         } else {
+            v <- as.character(h5read(path, "uns/scmarco/binarization/version"))
+            if (binarizer_status(v) == "older") {
+                warning(sprintf("%s: binarized with binarizer %s; this scMarco's is %s. Consider refitting it.",
+                    id, v, SCMARCO_BINARIZER_VERSION), call. = FALSE)
+            }
+            cells <- datasets[[id]]$cells
+            if (!is.null(cells) && file.exists(cells) &&
+                !is.null(msg <- format_problem(cells))) {
+                problems <- c(problems, sprintf("- %s: %s", id, msg))
+            }
             levels <- unlist(datasets[[id]]$subset_by)
             missing <- levels[!vapply(paste0("obs/", META_PREFIX, levels),
                 function(obj) h5ad_exists(path, obj), logical(1))]
@@ -412,7 +441,9 @@ ds_check_config <- function(datasets) {
 #' @return An object of class `scmarco_dataset`: a list with, among others,
 #'   `splits`, `clusters`, `cluster_names`, `cluster_labels`, `all_genes`,
 #'   `analysis_genes` (genes used for marker finding), `split_label`,
-#'   `reductions` and the flags `has_pct`, `has_mean` and `has_mixture`.
+#'   `reductions`, `binarization` (method, source, date and binarizer
+#'   `version` of the probabilities) and the flags `has_pct`, `has_mean` and
+#'   `has_mixture`.
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
@@ -433,6 +464,9 @@ ds_load <- function(id, entry) {
     }
     meta <- ch$uns$scmarco
     if (is.null(meta)) meta <- list()
+    for (msg in c(format_problem(entry$clusters), binarizer_problem(entry$clusters))) {
+        stop(msg, call. = FALSE)
+    }
 
     splits <- entry$split_order
     if (is.null(splits)) splits <- meta$split_order
@@ -510,6 +544,7 @@ ds_load <- function(id, entry) {
         has_mean = has_mean,
         trend = trend_mode(entry, ordered_splits, has_mean, !is.null(cells)),
         has_mixture = !is.null(mixture),
+        binarization = meta$binarization,
         reductions = if (is.null(cells)) character(0) else cells$obsm,
         binarized = new.env(parent = emptyenv())
     )

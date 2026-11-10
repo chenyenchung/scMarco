@@ -284,9 +284,14 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #' @return A `scmarco_mixture` list: `fits`, one fit per gene (`bimodal`
 #'   and `unimodal` posterior medians, `elpd`), the input `lognorm`,
 #'   `cluster` and `replicate`, the fit `settings` (`n_iter`, `n_folds`,
-#'   `seed`, `cores`) and `convergence` (one row per gene: the largest Rhat
+#'   `seed`, `cores`), `convergence` (one row per gene: the largest Rhat
 #'   and smallest effective sample size of the bimodal and unimodal fits'
-#'   parameters, and `converged`).
+#'   parameters, and `converged`), and the versions that make up its contract:
+#'   `schema_version` (the scMarco schema, as `format_version` of the
+#'   dataset files) and `binarizer_version`
+#'   (of the binarizer that fit it). [merge_mixture_fits()] and
+#'   [call_mixture()] refuse objects whose versions differ from the running
+#'   scMarco's, e.g. fits saved by an older release.
 #' @seealso [make_pseudobulk()] for the input, [call_mixture()],
 #'   [add_probability()].
 #' @references Davis FP, Nern A, Picard S, et al. (2020). A genetic, genomic,
@@ -357,6 +362,8 @@ fit_mixture <- function(lognorm, cluster, replicate = NULL, genes = NULL,
 
 new_mixture <- function(fits, lognorm, cluster, replicate, settings) {
     structure(list(
+        schema_version = SCMARCO_FORMAT_VERSION,
+        binarizer_version = SCMARCO_BINARIZER_VERSION,
         fits = fits, lognorm = lognorm, cluster = cluster,
         replicate = replicate, settings = settings,
         convergence = mixture_convergence(fits)
@@ -410,10 +417,37 @@ convergence_note <- function(genes, n) {
         length(genes), n, MIXTURE_MAX_RHAT, MIXTURE_MIN_N_EFF, first_few(genes))
 }
 
+check_mixture <- function(x, what = "fit") {
+    # Stop unless x is a scmarco_mixture this scMarco can use: the current
+    # object schema and binarizer. Fits are not upgraded: a fit of another
+    # binarizer would give probabilities neither version makes.
+    if (!inherits(x, "scmarco_mixture")) fail(what, " must come from fit_mixture()")
+    schema <- x$schema_version
+    if (is.null(schema)) {
+        fail(what, " was made before fits recorded their versions; ",
+            "refit it with fit_mixture()")
+    }
+    if (!identical(schema, SCMARCO_FORMAT_VERSION)) {
+        fail(what, " has schema version ", format(schema), " but this scMarco reads ",
+            SCMARCO_FORMAT_VERSION, "; ", if (compareVersion(as.character(schema),
+                SCMARCO_FORMAT_VERSION) > 0) "update scMarco" else
+                "refit it with fit_mixture()")
+    }
+    v <- x$binarizer_version
+    if (!identical(v, SCMARCO_BINARIZER_VERSION)) {
+        fail(what, " was fit by binarizer ", format(v), " but this scMarco's is ",
+            SCMARCO_BINARIZER_VERSION, "; refit it, or call it with the scMarco ",
+            "release that fit it")
+    }
+    invisible(TRUE)
+}
+
 #' @export
 print.scmarco_mixture <- function(x, ...) {
     cat(sprintf("scMarco mixture-model fit: %d gene(s), %d sample(s), %d cluster(s)\n",
         length(x$fits), length(x$cluster), length(unique(x$cluster))))
+    cat(sprintf("binarizer %s, schema %s\n", format(x$binarizer_version),
+        format(x$schema_version)))
     bad <- not_converged(x)
     if (length(bad) > 0) cat(convergence_note(bad, length(x$fits)), "\n")
     invisible(x)
@@ -429,11 +463,17 @@ merge_mixture_fits <- function(...) {
     if (!all(vapply(parts, inherits, logical(1), "scmarco_mixture"))) {
         fail("merge_mixture_fits() takes fits from fit_mixture()")
     }
+    for (i in seq_along(parts)) check_mixture(parts[[i]], sprintf("fit %d", i))
     first <- parts[[1]]
     for (p in parts[-1]) {
         if (!identical(colnames(p$lognorm), colnames(first$lognorm)) ||
             !identical(p$cluster, first$cluster) || !identical(p$replicate, first$replicate)) {
             fail("Fits to merge must share their samples, clusters and replicates")
+        }
+        # cores may differ between jobs; n_iter, n_folds and seed may not
+        keys <- c("n_iter", "n_folds", "seed")
+        if (!identical(p$settings[keys], first$settings[keys])) {
+            fail("Fits to merge must share their settings (n_iter, n_folds, seed)")
         }
     }
     fits <- do.call(c, lapply(parts, `[[`, "fits"))
@@ -464,7 +504,10 @@ merge_mixture_fits <- function(...) {
 #'   (rounded), the bimodal fit's `bimodal.on_level`, `bimodal.off_level`,
 #'   `bimodal.sd` and `bimodal.pi` (posterior medians, unrounded so that the
 #'   mixture-model plot is exact), `unimodal.level`, `unimodal.sd` (rounded)
-#'   and `exprType` (`"bimodal"` or `"unimodal"`).
+#'   and `exprType` (`"bimodal"` or `"unimodal"`). Its attribute
+#'   `scmarco_binarizer` holds the binarizer version, which
+#'   [add_probability()] records in the dataset; it survives [saveRDS()],
+#'   but not subsetting, after which the table counts as external.
 #' @seealso [fit_mixture()], [add_probability()].
 #' @references Davis FP, Nern A, Picard S, et al. (2020). A genetic, genomic,
 #'   and computational resource for exploring neural circuit function. eLife
@@ -477,7 +520,7 @@ merge_mixture_fits <- function(...) {
 #' @export
 call_mixture <- function(fit) {
     need_packages(c("mclust", "matrixStats"), "call_mixture()")
-    if (!inherits(fit, "scmarco_mixture")) fail("fit must come from fit_mixture()")
+    check_mixture(fit)
     genes <- names(fit$fits)
     lognorm <- fit$lognorm[genes, , drop = FALSE]
     clusters <- unique(fit$cluster)
@@ -536,5 +579,6 @@ call_mixture <- function(fit) {
     out$unimodal.level <- round2(pick(function(g) g$unimodal$level))
     out$unimodal.sd <- round2(pick(function(g) g$unimodal$sd))
     out$exprType <- ifelse(bimodal, "bimodal", "unimodal")
+    attr(out, "scmarco_binarizer") <- fit$binarizer_version
     out
 }

@@ -85,7 +85,7 @@ that exists.
 | `layers/prob` | mixture-model probability of expression (NaN = not modeled / non-bimodal) |
 | `layers/pct_pos` | optional fraction of cells with > 0 UMIs |
 | `layers/mean_lognorm` | optional cluster-average log-normalized expression (trend plot) |
-| `uns/scmarco` | `format_version`, `split_label`, `split_order`, `ordered_splits`, `source`, `binarization` (`method`, `source`, `date`, `version`) once binarized |
+| `uns/scmarco` | `format_version`, `split_label`, `split_order`, `ordered_splits`, `source`, `binarization` (`method`, `source`, `date`, binarizer `version`, required once binarized; see `docs/expected_input.md`) |
 
 A cluster absent from a split simply has no row, so missing values never mean
 two things.

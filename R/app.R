@@ -115,6 +115,7 @@ scmarco_app <- function(config = Sys.getenv("SCMARCO_CONFIG", "config.yaml"),
                     choices = stats::setNames(names(dataset_labels), dataset_labels),
                     selected = default_dataset
                 ),
+                uiOutput("dataset_versions"),
                 selectInput(
                     "gene_group_to_use",
                     "Which genes to consider?",
@@ -216,6 +217,14 @@ scmarco_server <- function(input, output, session, config) {
     # by, and each picked level shows its own filter. Levels cascade coarse to
     # fine: each narrows the choices of the levels below it. Searches only see
     # clusters that match. An unpicked level is "all".
+    output$dataset_versions <- renderUI({
+        b <- ds()$binarization
+        v <- b$version
+        helpText(sprintf("Binarizer %s%s; schema %s", v,
+            if (identical(v, BINARIZER_EXTERNAL)) " (tables not from scMarco's binarizer)" else "",
+            SCMARCO_FORMAT_VERSION))
+    })
+
     output$meta_filter <- renderUI({
         meta <- ds()$cluster_meta
         if (is.null(meta)) return(NULL)

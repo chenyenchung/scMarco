@@ -16,7 +16,10 @@ A data.frame, genes x clusters probabilities of expression
 (rounded), the bimodal fit's \code{bimodal.on_level}, \code{bimodal.off_level},
 \code{bimodal.sd} and \code{bimodal.pi} (posterior medians, unrounded so that the
 mixture-model plot is exact), \code{unimodal.level}, \code{unimodal.sd} (rounded)
-and \code{exprType} (\code{"bimodal"} or \code{"unimodal"}).
+and \code{exprType} (\code{"bimodal"} or \code{"unimodal"}). Its attribute
+\code{scmarco_binarizer} holds the binarizer version, which
+\code{\link[=add_probability]{add_probability()}} records in the dataset; it survives \code{\link[=saveRDS]{saveRDS()}},
+but not subsetting, after which the table counts as external.
 }
 \description{
 Turns the fits of \code{\link[=fit_mixture]{fit_mixture()}} into one split's probability table for

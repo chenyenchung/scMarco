@@ -107,6 +107,8 @@ sqlite_to_h5ad <- function(db, table, stages, out_dir = "data",
     write_clusters_h5ad(
         out, obs_split, obs_cluster, stages, clusters, genes, layers,
         split_label = split_label, ordered_splits = ordered,
+        binarization = binarization_record("legacy scMarco mixture model",
+            paste0("sqlite:", basename(db), ":", table), BINARIZER_EXTERNAL),
         extra_uns = list(
             source = paste0("sqlite:", basename(db), ":", table),
             mean_lognorm_method = "legacy scMarco cluster-average log-normalized value"
@@ -252,6 +254,8 @@ h5v1_to_h5ad <- function(h5, dataset, out_dir = "data", split_label = "split",
         is_bimodal = is_bimodal,
         bimodal_by_split = bimodal_by_split, n_cells = n_cells,
         split_label = split_label, ordered_splits = ordered,
+        binarization = binarization_record("legacy scMarco-Ding-lab mixture model",
+            paste0("h5v1:", basename(h5), ":", ds), BINARIZER_EXTERNAL),
         extra_uns = list(
             source = paste0("h5v1:", basename(h5), ":", ds),
             mean_lognorm_method = "arithmetic mean of log-normalized values per cluster"
