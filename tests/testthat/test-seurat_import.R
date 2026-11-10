@@ -378,3 +378,12 @@ test_that("build from one object per split with different genes and assays", {
   expect_equal(h5ad_layer(h5ad_open(file.path(dir, "toy_mem.clusters.h5ad")), "pct_pos"),
                h5ad_layer(h5ad_open(file.path(dir, "toy.clusters.h5ad")), "pct_pos"))
 })
+
+test_that("rhdf5's single-chunk note is dropped, other messages kept", {
+  local_mocked_bindings(write_h5ad = function(...) {
+    message("You created a large dataset with compression and chunking.\nThe chunk size ...")
+    message("Current chunk settings will exceed HDF5's 4GB limit.")
+  })
+  expect_identical(run_quietly(write_h5ad_rechunked(NULL, "x.h5ad")),
+                   "Current chunk settings will exceed HDF5's 4GB limit.\n")
+})

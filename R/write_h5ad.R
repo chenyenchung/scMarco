@@ -53,7 +53,7 @@ write_clusters_h5ad <- function(path, obs_split, obs_cluster, splits, clusters,
         varm = if (length(varm) > 0) varm else NULL,
         uns = list(scmarco = uns)
     )
-    write_h5ad(ad, path, mode = "w")
+    write_h5ad_rechunked(ad, path)
     rechunk_h5ad(
         path, n_obs = nrow(obs),
         dense = paste0("/layers/", names(layers)),
@@ -116,7 +116,7 @@ add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
 
     tmp <- paste0(path, ".binarize")
     on.exit(unlink(tmp))
-    write_h5ad(ad, tmp, mode = "w")
+    write_h5ad_rechunked(ad, tmp)
     rechunk_h5ad(
         tmp, n_obs = nrow(ad$obs),
         dense = paste0("/layers/", names(layers)),
@@ -155,7 +155,7 @@ write_cells_h5ad <- function(path, x, barcodes, cell_split, cell_cluster,
             reduction_meta = reduction_meta
         ))
     )
-    write_h5ad(ad, path, mode = "w")
+    write_h5ad_rechunked(ad, path)
     rechunk_h5ad(path, n_obs = nrow(obs), sparse_x = TRUE)
     invisible(path)
 }
@@ -190,6 +190,21 @@ order_cluster_ids <- function(ids) {
     num <- rep(NA_real_, length(ids))
     num[grepl("^[0-9]", ids)] <- as.numeric(lead)
     ids[order(is.na(num), num, ids)]
+}
+
+write_h5ad_rechunked <- function(ad, path) {
+    # anndataR's write_h5ad() for a file that rechunk_h5ad() re-chunks next.
+    # rhdf5 notes, for every large array, that it is a single chunk; that is
+    # what re-chunking fixes (rechunk_h5ad() warns when it cannot), so the
+    # note is dropped. Other messages pass through.
+    withCallingHandlers(
+        write_h5ad(ad, path, mode = "w"),
+        message = function(m) {
+            if (startsWith(conditionMessage(m), "You created a large dataset with compression")) {
+                invokeRestart("muffleMessage")
+            }
+        }
+    )
 }
 
 rechunk_h5ad <- function(path, n_obs, sparse_x = FALSE, dense = character(0),
