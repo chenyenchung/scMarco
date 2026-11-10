@@ -45,8 +45,11 @@ them, e.g. chunks of genes fit in parallel.}
 }
 \value{
 A \code{scmarco_mixture} list: \code{fits}, one fit per gene (\code{bimodal}
-and \code{unimodal} posterior medians, \code{elpd}), and the input \code{lognorm},
-\code{cluster} and \code{replicate}.
+and \code{unimodal} posterior medians, \code{elpd}), the input \code{lognorm},
+\code{cluster} and \code{replicate}, the fit \code{settings} (\code{n_iter}, \code{n_folds},
+\code{seed}, \code{cores}) and \code{convergence} (one row per gene: the largest Rhat
+and smallest effective sample size of the bimodal and unimodal fits'
+parameters, and \code{converged}).
 }
 \description{
 Fits the log-normalized expression of each gene across pseudobulk samples
@@ -72,6 +75,10 @@ folder that every node of a cluster sees, or \code{""} to compile in every
 session. Before submitting many jobs, fit one gene once so the jobs find
 the models compiled. A new rstan, StanHeaders or R version compiles them
 again.
+
+A gene whose bimodal or unimodal fit has a parameter with Rhat above 1.05
+or an effective sample size below 100 is reported as not converged, with
+a warning, in \verb{$convergence} and by \code{\link[=call_mixture]{call_mixture()}}.
 
 Fits are reproducible by default: each gene is fit after
 \code{set.seed(seed + i)}, \code{i} being its row in \code{lognorm}, so a gene's fit does

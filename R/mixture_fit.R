@@ -28,6 +28,11 @@ MIXTURE_ADAPT_DELTA <- 0.98
 MIXTURE_SURE_ON <- 0.9
 MIXTURE_SURE_OFF <- 0.1
 
+# A fit whose Stan run has a parameter with Rhat above MIXTURE_MAX_RHAT or an
+# effective sample size below MIXTURE_MIN_N_EFF is reported as not converged
+MIXTURE_MAX_RHAT <- 1.05
+MIXTURE_MIN_N_EFF <- 100
+
 stan_models <- new.env(parent = emptyenv())
 
 need_packages <- function(pkgs, what) {
@@ -248,6 +253,10 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #' the models compiled. A new rstan, StanHeaders or R version compiles them
 #' again.
 #'
+#' A gene whose bimodal or unimodal fit has a parameter with Rhat above 1.05
+#' or an effective sample size below 100 is reported as not converged, with
+#' a warning, in `$convergence` and by [call_mixture()].
+#'
 #' Fits are reproducible by default: each gene is fit after
 #' `set.seed(seed + i)`, `i` being its row in `lognorm`, so a gene's fit does
 #' not depend on how the genes are chunked as long as every chunk gets the
@@ -273,8 +282,11 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #'   state.
 #'
 #' @return A `scmarco_mixture` list: `fits`, one fit per gene (`bimodal`
-#'   and `unimodal` posterior medians, `elpd`), and the input `lognorm`,
-#'   `cluster` and `replicate`.
+#'   and `unimodal` posterior medians, `elpd`), the input `lognorm`,
+#'   `cluster` and `replicate`, the fit `settings` (`n_iter`, `n_folds`,
+#'   `seed`, `cores`) and `convergence` (one row per gene: the largest Rhat
+#'   and smallest effective sample size of the bimodal and unimodal fits'
+#'   parameters, and `converged`).
 #' @seealso [make_pseudobulk()] for the input, [call_mixture()],
 #'   [add_probability()].
 #' @references Davis FP, Nern A, Picard S, et al. (2020). A genetic, genomic,
@@ -335,8 +347,76 @@ fit_mixture <- function(lognorm, cluster, replicate = NULL, genes = NULL,
         fits[[genes[i]]] <- fit_gene(as.numeric(lognorm[genes[i], ]), cluster_idx,
             replicate_idx, labels, n_folds, n_iter, cores)
     }
-    structure(list(fits = fits, lognorm = lognorm[genes, , drop = FALSE],
-        cluster = cluster, replicate = replicate), class = "scmarco_mixture")
+    out <- new_mixture(fits, lognorm[genes, , drop = FALSE], cluster, replicate,
+        settings = list(n_iter = n_iter, n_folds = n_folds,
+            seed = if (is.null(seed)) NA_real_ else seed, cores = cores))
+    bad <- not_converged(out)
+    if (length(bad) > 0) warning(convergence_note(bad, length(genes)), call. = FALSE)
+    out
+}
+
+new_mixture <- function(fits, lognorm, cluster, replicate, settings) {
+    structure(list(
+        fits = fits, lognorm = lognorm, cluster = cluster,
+        replicate = replicate, settings = settings,
+        convergence = mixture_convergence(fits)
+    ), class = "scmarco_mixture")
+}
+
+mixture_convergence <- function(fits) {
+    # One row per gene: worst Rhat and smallest effective sample size of the
+    # bimodal and unimodal fits' parameters, and whether both converged (NA
+    # for fits without diagnostics)
+    worst <- function(d, col, f) {
+        if (is.null(d)) return(NA_real_)
+        x <- d[, col]
+        if (anyNA(x)) return(NaN)   # e.g. Rhat of a constant chain
+        f(x)
+    }
+    stat <- function(model, col, f) vapply(fits, function(g) {
+        part <- if (is.list(g)) g[[model]]
+        worst(if (is.list(part)) part$diagnostics, col, f)
+    }, numeric(1))
+    out <- data.frame(
+        gene = names(fits),
+        bimodal_rhat = stat("bimodal", "Rhat", max),
+        bimodal_n_eff = stat("bimodal", "n_eff", min),
+        unimodal_rhat = stat("unimodal", "Rhat", max),
+        unimodal_n_eff = stat("unimodal", "n_eff", min),
+        row.names = NULL
+    )
+    ok <- function(rhat, n_eff) rhat <= MIXTURE_MAX_RHAT & n_eff >= MIXTURE_MIN_N_EFF
+    out$converged <- ok(out$bimodal_rhat, out$bimodal_n_eff) &
+        ok(out$unimodal_rhat, out$unimodal_n_eff)
+    # diagnostics recorded but not computable (NaN): not converged
+    nan <- is.nan(out$bimodal_rhat) | is.nan(out$bimodal_n_eff) |
+        is.nan(out$unimodal_rhat) | is.nan(out$unimodal_n_eff)
+    out$converged[nan] <- FALSE
+    out
+}
+
+not_converged <- function(fit) {
+    # Genes whose fit did not converge; fits saved before fit_mixture()
+    # recorded convergence get it computed from their diagnostics
+    conv <- fit$convergence
+    if (is.null(conv)) conv <- mixture_convergence(fit$fits)
+    conv$gene[conv$converged %in% FALSE]
+}
+
+convergence_note <- function(genes, n) {
+    sprintf(paste0("%d of %d gene(s) did not converge (Rhat > %s or effective sample ",
+        "size < %d in the bimodal or unimodal fit): %s. See `$convergence`; ",
+        "refitting them with a larger n_iter may help."),
+        length(genes), n, MIXTURE_MAX_RHAT, MIXTURE_MIN_N_EFF, first_few(genes))
+}
+
+#' @export
+print.scmarco_mixture <- function(x, ...) {
+    cat(sprintf("scMarco mixture-model fit: %d gene(s), %d sample(s), %d cluster(s)\n",
+        length(x$fits), length(x$cluster), length(unique(x$cluster))))
+    bad <- not_converged(x)
+    if (length(bad) > 0) cat(convergence_note(bad, length(x$fits)), "\n")
+    invisible(x)
 }
 
 #' @rdname fit_mixture
@@ -360,9 +440,8 @@ merge_mixture_fits <- function(...) {
     if (anyDuplicated(names(fits))) {
         fail("Gene(s) fit twice: ", first_few(unique(names(fits)[duplicated(names(fits))])))
     }
-    structure(list(fits = fits,
-        lognorm = do.call(rbind, lapply(parts, `[[`, "lognorm")),
-        cluster = first$cluster, replicate = first$replicate), class = "scmarco_mixture")
+    new_mixture(fits, do.call(rbind, lapply(parts, `[[`, "lognorm")),
+        first$cluster, first$replicate, settings = first$settings)
 }
 
 #' Call expression from mixture-model fits
@@ -374,7 +453,8 @@ merge_mixture_fits <- function(...) {
 #' the other genes, expression in all of the split's samples is compared
 #' with the ON and OFF distributions pooled from the bimodal genes (samples
 #' with P(On) > 0.9 and < 0.1), which gives one probability for every
-#' cluster. Needs at least one bimodal gene.
+#' cluster. Needs at least one bimodal gene. Genes whose fit did not converge
+#' (see [fit_mixture()]) are named in a warning; their calls are kept.
 #'
 #' @param fit Fits from [fit_mixture()] or [merge_mixture_fits()], of
 #'   every gene of the split (the pooled distributions use them all).
@@ -408,6 +488,10 @@ call_mixture <- function(fit) {
     p_on <- do.call(rbind, lapply(fit$fits, function(g) exp(g$bimodal$log_p_on_cluster)))
     dimnames(p_on) <- list(genes, clusters)
     message(sum(bimodal), " of ", length(genes), " genes are bimodal")
+    bad <- not_converged(fit)
+    if (length(bad) > 0) {
+        warning(convergence_note(bad, length(genes)), " Their calls are kept.", call. = FALSE)
+    }
     if (!any(bimodal)) fail("No bimodal gene to learn the ON and OFF distributions from")
 
     # Global ON and OFF distributions: samples of bimodal genes whose cluster

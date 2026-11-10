@@ -23,9 +23,8 @@ fake_mixture <- function() {
     geneB = fake_gene_fit(log(c(0.002, 0.995, 0.001)), diff = 25, diff_se = 4),
     geneC = fake_gene_fit(log(c(0.6, 0.7, 0.5)), diff = 3, diff_se = 2)
   )
-  structure(list(fits = fits, lognorm = lognorm, cluster = cluster,
-                 replicate = rep(c("1", "2"), each = 3)),
-            class = "scmarco_mixture")
+  new_mixture(fits, lognorm, cluster, replicate = rep(c("1", "2"), each = 3),
+              settings = list(n_iter = 500, n_folds = 10, seed = 42, cores = 1))
 }
 
 test_that("partition_folds fills every fold and splits every replicate", {
@@ -146,6 +145,33 @@ test_that("fit_mixture fits genes with Stan", {
   )))
   expect_identical(.Random.seed, before)
   expect_identical(alone$fits$geneB, fit$fits$geneB)
+})
+
+test_that("fits that did not converge are reported", {
+  skip_if_not_installed("mclust")
+  skip_if_not_installed("matrixStats")
+  diag <- function(rhat, n_eff) cbind(Rhat = rhat, n_eff = n_eff)
+  fit <- fake_mixture()
+  # no diagnostics (fits made without Stan): convergence unknown, not reported
+  expect_true(all(is.na(fit$convergence$converged)))
+  for (g in names(fit$fits)) {
+    fit$fits[[g]]$bimodal$diagnostics <- diag(c(1.001, 1.002), c(800, 900))
+    fit$fits[[g]]$unimodal$diagnostics <- diag(c(1.001, 1.003), c(700, 750))
+  }
+  fit$fits$geneA$bimodal$diagnostics <- diag(c(1.62, 1.01), c(9.5, 500))
+  fit$fits$geneC$unimodal$diagnostics <- diag(c(NaN, 1), c(800, 800))
+  fit <- new_mixture(fit$fits, fit$lognorm, fit$cluster, fit$replicate, fit$settings)
+  conv <- fit$convergence
+  expect_equal(conv$gene, c("geneA", "geneB", "geneC"))
+  expect_equal(conv$bimodal_rhat[1], 1.62)
+  expect_equal(conv$bimodal_n_eff[1], 9.5)
+  expect_equal(conv$converged, c(FALSE, TRUE, FALSE))
+  expect_output(print(fit), "2 of 3 gene\\(s\\) did not converge.*geneA, geneC")
+  expect_warning(suppressMessages(call_mixture(fit)),
+                 "2 of 3 gene\\(s\\) did not converge.*Their calls are kept")
+  # fits saved before convergence was recorded get it from their diagnostics
+  fit$convergence <- NULL
+  expect_equal(not_converged(fit), c("geneA", "geneC"))
 })
 
 test_that("compiled Stan models are cached on disk", {

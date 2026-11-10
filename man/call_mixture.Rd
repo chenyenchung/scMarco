@@ -26,7 +26,8 @@ probability of expression in a cluster is then the bimodal model's. For
 the other genes, expression in all of the split's samples is compared
 with the ON and OFF distributions pooled from the bimodal genes (samples
 with P(On) > 0.9 and < 0.1), which gives one probability for every
-cluster. Needs at least one bimodal gene.
+cluster. Needs at least one bimodal gene. Genes whose fit did not converge
+(see \code{\link[=fit_mixture]{fit_mixture()}}) are named in a warning; their calls are kept.
 }
 \examples{
 \dontrun{
