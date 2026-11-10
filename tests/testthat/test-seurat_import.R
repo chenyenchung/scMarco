@@ -337,9 +337,20 @@ test_that("build from one object per split with different genes and assays", {
   build <- function(...) {
     seurat_to_h5ad(objs, "toy", out_dir = dir, cluster_col = "cl", assay = "RNA", ...)
   }
-  # A missing reduction is an error, not a silently missing UMAP
-  expect_error(suppressMessages(build()),
+  # A reduction named by the caller must exist; a missing default one warns
+  expect_error(suppressMessages(build(reduction = "umap")),
                "Male: no reduction named 'umap'. Reductions on the object: none", fixed = TRUE)
+  warned <- character(0)
+  withCallingHandlers(suppressMessages(build()), warning = function(w) {
+    warned <<- c(warned, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  })
+  expect_length(warned, 2)
+  expect_match(warned[1], "Male: no reduction named 'umap' (reductions on the object: none)",
+               fixed = TRUE)
+  expect_match(warned[2], "^Female: ")
+  obsm <- rhdf5::h5ls(file.path(dir, "toy.cells.h5ad"))
+  expect_false(any(obsm$group == "/obsm"))
   suppressMessages(build(reduction = NULL))
   clusters <- file.path(dir, "toy.clusters.h5ad")
   cells <- file.path(dir, "toy.cells.h5ad")

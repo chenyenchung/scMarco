@@ -55,7 +55,9 @@ names the reduction.}
 
 \item{reduction}{Reduction stored as \verb{obsm/X_<reduction>_full}, or
 \verb{X_<split>_<reduction>} per split (\verb{X_<split>} for \code{"umap"}). \code{NULL}
-builds without one.}
+builds without one. A reduction named here must exist on every object;
+when the default \code{"umap"} is missing, the build warns and goes on
+without it.}
 
 \item{exclude_clusters}{Cluster IDs whose cells are dropped.}
 }

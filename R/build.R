@@ -46,7 +46,9 @@
 #'   names the reduction.
 #' @param reduction Reduction stored as `obsm/X_<reduction>_full`, or
 #'   `X_<split>_<reduction>` per split (`X_<split>` for `"umap"`). `NULL`
-#'   builds without one.
+#'   builds without one. A reduction named here must exist on every object;
+#'   when the default `"umap"` is missing, the build warns and goes on
+#'   without it.
 #' @param exclude_clusters Cluster IDs whose cells are dropped.
 #'
 #' @return The paths of the two files (`clusters`, `cells`), invisibly.
@@ -74,6 +76,8 @@ seurat_to_h5ad <- function(seurat, dataset, out_dir = "data",
     if (!requireNamespace("SeuratObject", quietly = TRUE)) {
         fail("seurat_to_h5ad() needs the SeuratObject package")
     }
+    # a reduction the caller names must exist; the default may be missing
+    reduction_required <- !missing(reduction)
     inputs <- seurat_inputs(seurat)
     # Read prob before the slow steps so a bad path fails early
     prob_tables <- if (!is.null(prob)) read_prob(prob) else NULL
@@ -106,7 +110,8 @@ seurat_to_h5ad <- function(seurat, dataset, out_dir = "data",
         barcodes <- SeuratObject::Cells(obj)[keep]
         red <- if (!is.null(reduction)) {
             seurat_reduction(obj, reduction, barcodes,
-                if (per_split) paste0(names(inputs)[k], ": ") else "")
+                if (per_split) paste0(names(inputs)[k], ": ") else "",
+                required = reduction_required)
         }
         parts[[k]] <- list(
             x = lognorm_by_cell(get_counts(obj, assay)[, barcodes, drop = FALSE]),

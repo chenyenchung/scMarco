@@ -93,15 +93,23 @@ read_seurat <- function(path) {
     obj
 }
 
-seurat_reduction <- function(obj, red_name, cells, context = "") {
+seurat_reduction <- function(obj, red_name, cells, context = "", required = TRUE) {
     # First two dimensions of reduction `red_name` for `cells`. A missing
-    # reduction is an error that lists the object's reductions.
-    # context: prefix for the error, e.g. "P15: "
+    # reduction lists the object's reductions: an error when `required` (the
+    # caller named it), else a warning and NULL (no reduction stored).
+    # context: prefix for the message, e.g. "P15: "
     if (!red_name %in% SeuratObject::Reductions(obj)) {
         found <- SeuratObject::Reductions(obj)
+        found <- if (length(found) > 0) paste(found, collapse = ", ") else "none"
+        if (!required) {
+            warning(context, "no reduction named '", red_name, "' (reductions on the object: ",
+                found, "), so none is stored and the UMAP tab stays hidden. Pass ",
+                "reduction = \"<name>\" to store another one, or reduction = NULL to ",
+                "build without one and silence this warning.", call. = FALSE)
+            return(NULL)
+        }
         fail(context, "no reduction named '", red_name, "'. Reductions on the object: ",
-            if (length(found) > 0) paste(found, collapse = ", ") else "none",
-            ". Pass reduction = \"<name>\" to store one of them, or reduction = NULL to build without one.")
+            found, ". Pass reduction = \"<name>\" to store one of them, or reduction = NULL to build without one.")
     }
     SeuratObject::Embeddings(obj, red_name)[cells, c(1, 2), drop = FALSE]
 }

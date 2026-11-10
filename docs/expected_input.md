@@ -168,10 +168,11 @@ and Mixture model still show every cluster.
 
 `reduction = "tsne"` stores that reduction instead of `umap`, as
 `obsm/X_tsne_full` (one object) or `obsm/X_<split>_tsne` (one object per
-split); the plots label its axes tSNE. The build stops if an object lacks the
-named reduction and lists the reductions it has (e.g. `umap.rna` or
-`wnn.umap`); pass that name as `reduction`, or `reduction = NULL` to
-build without one.
+split); the plots label its axes tSNE. The build stops if an object lacks a
+reduction named with `reduction`, and lists the reductions it has (e.g.
+`umap.rna` or `wnn.umap`). When the default `umap` is missing, the build
+warns with the same list and goes on without a reduction. Pass the right
+name as `reduction`, or `reduction = NULL` to build without one.
 
 Reductions named after a split (`X_<split>` or `X_<split>_<reduction>`) are
 treated as computed separately for each split. The UMAP tab shows each group as
