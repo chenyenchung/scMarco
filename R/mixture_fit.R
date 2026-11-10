@@ -124,11 +124,23 @@ cached_stan_model <- function(name, file, compile, usable = stanmodel_usable,
     m
 }
 
+# The draws fit_gene() reads from each model. Stan saves only these: the
+# others (e.g. the CV models' log_lik_t, bimodal's per-cluster sums) cost
+# memory and summary() time, and dropping them does not change the draws.
+MIXTURE_SAVED_PARS <- list(
+    bimodal = c("mu_on", "mu_off", "sd1", "pi_on", "log_p_on_sample",
+        "log_p_on_replicate", "log_p_on_cluster"),
+    unimodal = c("mu1", "sd1"),
+    bimodal_cv = "log_lik_h",
+    unimodal_cv = "log_lik_h"
+)
+
 run_stan <- function(name, data, n_iter, cores) {
     # Seeds come from R's RNG, so set.seed() makes a run reproducible. With
     # cores = 1 rstan takes more draws from it, so the seeds of later runs
     # differ from those of the pipeline, which ran its chains in parallel
     rstan::sampling(mixture_stan_model(name), data = data,
+        pars = MIXTURE_SAVED_PARS[[name]],
         chains = MIXTURE_CHAINS, iter = n_iter, cores = cores,
         control = list(adapt_delta = MIXTURE_ADAPT_DELTA), refresh = -1,
         verbose = FALSE)
