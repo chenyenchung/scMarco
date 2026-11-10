@@ -41,35 +41,27 @@ export(umap_plot)
 export(validate_h5ad)
 import(ggplot2)
 import(shiny)
-importFrom(anndataR,
-  AnnData,
-  read_h5ad,
-  write_h5ad
-)
+importFrom(anndataR,AnnData)
+importFrom(anndataR,read_h5ad)
+importFrom(anndataR,write_h5ad)
 importFrom(markdown,mark_html)
 importFrom(methods,as)
-importFrom(rhdf5,
-  H5Fclose,
-  H5Fopen,
-  H5Gclose,
-  H5Gopen,
-  H5Lexists,
-  h5ls,
-  h5read,
-  h5readAttributes
-)
-importFrom(stats,
-  aggregate,
-  ave,
-  dnorm,
-  plogis,
-  qlogis,
-  quantile,
-  setNames
-)
-importFrom(utils,
-  head,
-  read.delim,
-  write.csv,
-  write.table
-)
+importFrom(rhdf5,H5Fclose)
+importFrom(rhdf5,H5Fopen)
+importFrom(rhdf5,H5Gclose)
+importFrom(rhdf5,H5Gopen)
+importFrom(rhdf5,H5Lexists)
+importFrom(rhdf5,h5ls)
+importFrom(rhdf5,h5read)
+importFrom(rhdf5,h5readAttributes)
+importFrom(stats,aggregate)
+importFrom(stats,ave)
+importFrom(stats,dnorm)
+importFrom(stats,plogis)
+importFrom(stats,qlogis)
+importFrom(stats,quantile)
+importFrom(stats,setNames)
+importFrom(utils,head)
+importFrom(utils,read.delim)
+importFrom(utils,write.csv)
+importFrom(utils,write.table)
