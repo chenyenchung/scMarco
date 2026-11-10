@@ -45,7 +45,8 @@
 #'
 #' @return An object of class `scmarco_binarized`: a list with the logical
 #'   arrays `on` and `ambiguous` (genes x clusters x splits), the logical
-#'   matrices `present` (clusters x splits) and `bimodal` (genes x splits),
+#'   matrices `present` (clusters x splits), `bimodal` (genes x splits) and
+#'   `anyon` (genes x clusters: ON or ambiguous in any split, see [any_on()]),
 #'   and `genes`, `clusters`, `splits` and `margin`.
 #' @examples
 #' prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,
@@ -110,6 +111,7 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
     structure(
         list(
             on = on, ambiguous = ambiguous, present = present, bimodal = bimodal,
+            anyon = anyon_matrix(on, ambiguous),
             genes = genes, clusters = clusters, splits = splits, margin = margin
         ),
         class = "scmarco_binarized"
@@ -138,6 +140,7 @@ restrict_clusters <- function(b, keep) {
     b$on <- b$on[, keep, , drop = FALSE]
     b$ambiguous <- b$ambiguous[, keep, , drop = FALSE]
     b$present <- b$present[keep, , drop = FALSE]
+    if (!is.null(b$anyon)) b$anyon <- b$anyon[, keep, drop = FALSE]
     b$clusters <- keep
     b
 }
@@ -185,11 +188,21 @@ pass_matrix <- function(b, required, min_n, clusters = b$clusters,
 #' any_on(b, genes = b$genes[1:3], clusters = b$clusters[1:4])
 #' @export
 any_on <- function(b, genes = b$genes, clusters = b$clusters) {
-    maybe <- b$on[genes, clusters, , drop = FALSE] |
-        b$ambiguous[genes, clusters, , drop = FALSE]
-    out <- rowSums(maybe, dims = 2) > 0
-    dim(out) <- c(length(genes), length(clusters))
-    dimnames(out) <- list(genes, clusters)
+    # binarize() computes it once for every gene and cluster; objects made
+    # without it (e.g. kept from an older scMarco) get it computed here
+    if (!is.null(b$anyon)) {
+        return(b$anyon[genes, clusters, drop = FALSE])
+    }
+    anyon_matrix(b$on[genes, clusters, , drop = FALSE],
+        b$ambiguous[genes, clusters, , drop = FALSE])
+}
+
+anyon_matrix <- function(on, ambiguous) {
+    # genes x clusters logical from genes x clusters x splits arrays: ON or
+    # ambiguous in any split
+    out <- rowSums(on | ambiguous, dims = 2) > 0
+    dim(out) <- dim(on)[1:2]
+    dimnames(out) <- dimnames(on)[1:2]
     out
 }
 

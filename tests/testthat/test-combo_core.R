@@ -191,3 +191,20 @@ test_that("restrict_clusters hides the clusters left out from every search", {
   expect_error(target_genes(b, "B", character(0), 1))
   expect_identical(restrict_clusters(toy(), c("A", "B", "C")), toy())
 })
+
+test_that("any_on reads the matrix binarize() stores, also after restricting", {
+  computed <- function(b, genes = b$genes, clusters = b$clusters) {
+    b$anyon <- NULL
+    any_on(b, genes = genes, clusters = clusters)
+  }
+  bimodal <- matrix(TRUE, 5, 3, dimnames = list(paste0("g", 1:5), c("s1", "s2", "s3")))
+  bimodal["g5", "s1"] <- FALSE
+  for (b in list(toy(margin = 0.1), toy(margin = 0.1, bimodal = bimodal))) {
+    expect_identical(b$anyon, computed(b))
+    expect_identical(any_on(b, "g5", c("C", "A")), computed(b, "g5", c("C", "A")))
+    sub <- restrict_clusters(b, c("A", "C"))
+    expect_identical(sub$anyon, computed(sub))
+  }
+  # g5 is ambiguous (0.5 at margin 0.1) only in s1 A
+  expect_identical(toy(margin = 0.1)$anyon["g5", ], c(A = TRUE, B = FALSE, C = FALSE))
+})

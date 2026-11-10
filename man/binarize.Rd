@@ -32,7 +32,8 @@ mixture model called the gene bimodal in that split.}
 \value{
 An object of class \code{scmarco_binarized}: a list with the logical
 arrays \code{on} and \code{ambiguous} (genes x clusters x splits), the logical
-matrices \code{present} (clusters x splits) and \code{bimodal} (genes x splits),
+matrices \code{present} (clusters x splits), \code{bimodal} (genes x splits) and
+\code{anyon} (genes x clusters: ON or ambiguous in any split, see \code{\link[=any_on]{any_on()}}),
 and \code{genes}, \code{clusters}, \code{splits} and \code{margin}.
 }
 \description{
