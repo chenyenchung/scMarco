@@ -15,6 +15,9 @@
 #' @param required,min_n Both genes must be ON in every `required` split and
 #'   in at least `min_n` splits.
 #' @param top Maximum number of pairs per cluster.
+#' @param cores Number of clusters ranked at once, in forked processes
+#'   ([parallel::mclapply()]); one on Windows, which cannot fork. The result
+#'   does not depend on it.
 #'
 #' @return A data.frame with columns `cluster` (ID), `cluster_name` (`NA`
 #'   when unnamed), `gene1`, `gene2`, `offtargets` (other clusters in which
@@ -26,15 +29,27 @@
 #' head(pairs)
 #' @export
 find_pairs <- function(clusters, out = NULL, cut = 0.5, required = character(0),
-                       min_n = 1, top = 20) {
+                       min_n = 1, top = 20, cores = 1) {
     ds <- ds_load("find_pairs", list(label = "find_pairs", clusters = clusters))
     b <- ds_binarize(ds, cut)
-    results <- lapply(ds$clusters, function(cl) {
+    rank_cluster <- function(cl) {
         res <- pair_offtargets(b, cl, required, as.integer(min_n),
             limit = as.integer(top), genes = ds$analysis_genes)
         if (nrow(res) == 0) return(NULL)
         cbind(cluster = cl, cluster_name = unname(ds$cluster_names[cl]), res)
-    })
+    }
+    if (.Platform$OS.type == "windows") cores <- 1
+    results <- if (cores > 1) {
+        parallel::mclapply(ds$clusters, rank_cluster, mc.cores = cores)
+    } else {
+        lapply(ds$clusters, rank_cluster)
+    }
+    # mclapply() returns a worker's error instead of raising it
+    failed <- vapply(results, inherits, logical(1), "try-error")
+    if (any(failed)) {
+        stop("Ranking pairs failed for cluster ", ds$clusters[which(failed)[1]], ": ",
+            conditionMessage(attr(results[[which(failed)[1]]], "condition")), call. = FALSE)
+    }
     pairs <- do.call(rbind, results)
     if (!is.null(out)) {
         dir.create(dirname(out), showWarnings = FALSE, recursive = TRUE)

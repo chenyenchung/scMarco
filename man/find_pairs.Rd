@@ -10,7 +10,8 @@ find_pairs(
   cut = 0.5,
   required = character(0),
   min_n = 1,
-  top = 20
+  top = 20,
+  cores = 1
 )
 }
 \arguments{
@@ -26,6 +27,10 @@ find_pairs(
 in at least \code{min_n} splits.}
 
 \item{top}{Maximum number of pairs per cluster.}
+
+\item{cores}{Number of clusters ranked at once, in forked processes
+(\code{\link[parallel:mclapply]{parallel::mclapply()}}); one on Windows, which cannot fork. The result
+does not depend on it.}
 }
 \value{
 A data.frame with columns \code{cluster} (ID), \code{cluster_name} (\code{NA}
