@@ -424,21 +424,19 @@ pair_offtargets <- function(b, ident, required, min_n, first = NULL,
     a <- any_on(b, genes = cand, clusters = others) * 1L
     shared <- tcrossprod(a)
 
+    # Keep only pairs that can make the top `limit` before sorting: there can be
+    # millions of pairs, so drop the others before indexing them. Ties break
+    # on how specific each gene is on its own (sum of single-gene
+    # off-targets), then on gene position (alphabetical).
     if (!is.null(first)) {
         idx <- cbind(1L, seq(2, length(cand)))
+        idx <- idx[can_rank(shared[idx], limit), , drop = FALSE]
     } else {
-        idx <- which(upper.tri(shared), arr.ind = TRUE)
+        pair <- upper.tri(shared)
+        pair[pair] <- can_rank(shared[pair], limit)
+        idx <- which(pair, arr.ind = TRUE)
     }
     vals <- as.integer(shared[idx])
-    # Keep only pairs that can make the top `limit` before sorting: there can be
-    # millions of pairs. Ties break on how specific each gene is on its own
-    # (sum of single-gene off-targets), then on gene position (alphabetical).
-    if (length(vals) > limit) {
-        worst_kept <- sort(vals, partial = limit)[limit]
-        keep <- vals <= worst_kept
-        idx <- idx[keep, , drop = FALSE]
-        vals <- vals[keep]
-    }
     single <- diag(shared)
     single_sum <- as.integer(single[idx[, 1]] + single[idx[, 2]])
     ord <- head(order(vals, single_sum, idx[, 1], idx[, 2], method = "radix"), limit)
@@ -448,6 +446,13 @@ pair_offtargets <- function(b, ident, required, min_n, first = NULL,
         offtargets = vals[ord],
         single_offtargets = single_sum[ord]
     )
+}
+
+can_rank <- function(vals, limit) {
+    # Which values can be among the `limit` smallest (all values tied with
+    # the limit-th smallest are kept)
+    if (length(vals) <= limit) return(rep(TRUE, length(vals)))
+    vals <= sort(vals, partial = limit)[limit]
 }
 
 #' Clusters labeled by a gene combination

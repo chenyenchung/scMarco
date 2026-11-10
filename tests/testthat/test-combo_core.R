@@ -208,3 +208,11 @@ test_that("any_on reads the matrix binarize() stores, also after restricting", {
   # g5 is ambiguous (0.5 at margin 0.1) only in s1 A
   expect_identical(toy(margin = 0.1)$anyon["g5", ], c(A = TRUE, B = FALSE, C = FALSE))
 })
+
+test_that("can_rank keeps every value tied with the limit-th smallest", {
+  expect_identical(can_rank(c(3, 1, 2, 2, 5), 2), c(FALSE, TRUE, TRUE, TRUE, FALSE))
+  expect_identical(can_rank(c(3, 1), 5), c(TRUE, TRUE))
+  b <- toy()
+  expect_identical(pair_offtargets(b, "A", character(0), 1, limit = 1),
+    head(pair_offtargets(b, "A", character(0), 1, limit = 50), 1))
+})
