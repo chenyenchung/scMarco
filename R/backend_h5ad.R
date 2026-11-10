@@ -546,7 +546,8 @@ ds_load <- function(id, entry) {
         has_mixture = !is.null(mixture),
         binarization = meta$binarization,
         reductions = if (is.null(cells)) character(0) else cells$obsm,
-        binarized = new.env(parent = emptyenv())
+        binarized = new.env(parent = emptyenv()),
+        cell_expression = new.env(parent = emptyenv())
     )
     class(ds) <- "scmarco_dataset"
     .ds_cache[[key]] <- ds
@@ -570,24 +571,26 @@ ds_load <- function(id, entry) {
 #' dim(b$on)
 #' @export
 ds_binarize <- function(ds, margin) {
-    key <- format(margin, nsmall = 3)
-    if (!is.null(ds$binarized[[key]])) {
-        return(ds$binarized[[key]])
-    }
-    # Evict the oldest; .order is hidden from ls() and keeps insertion order
-    order <- ds$binarized$.order
-    if (length(order) >= 2) {
-        rm(list = order[1], envir = ds$binarized)
-        order <- order[-1]
-    }
-    b <- binarize(
+    cached(ds$binarized, format(margin, nsmall = 3), size = 2, binarize(
         ds$prob, ds$obs_split, ds$obs_cluster,
         splits = ds$splits, clusters = ds$clusters,
         margin = margin, bimodal = ds$bimodal
-    )
-    ds$binarized[[key]] <- b
-    ds$binarized$.order <- c(order, key)
-    b
+    ))
+}
+
+cached <- function(env, key, size, value) {
+    # The value stored in `env` under `key`, else `value` (evaluated only
+    # then), stored there; the oldest entry is evicted beyond `size`. .order
+    # is hidden from ls() and keeps insertion order.
+    if (!is.null(env[[key]])) return(env[[key]])
+    env[[key]] <- value
+    order <- c(env$.order, key)
+    if (length(order) > size) {
+        rm(list = order[1], envir = env)
+        order <- order[-1]
+    }
+    env$.order <- order
+    value
 }
 
 gene_choices <- function(ds, genes) {
@@ -628,9 +631,18 @@ ds_cells_obs <- function(ds) {
 }
 
 ds_cell_expression <- function(ds, gene) {
+    # Expression of a gene in every cell. A read takes up to ~1 s for a broadly
+    # expressed gene of a large dataset, and the plots of one gene read it
+    # again, so the most recent genes are kept with the dataset.
     if (is.null(ds$cells_h)) stop("Dataset has no cell-level file")
-    h5ad_x_gene(ds$cells_h, gene)
+    if (is.null(ds$cell_expression)) return(h5ad_x_gene(ds$cells_h, gene))
+    cached(ds$cell_expression, gene, size = CELL_EXPRESSION_CACHE,
+        h5ad_x_gene(ds$cells_h, gene))
 }
+
+# Genes whose per-cell expression ds_cell_expression() keeps per dataset
+# (8 doubles per cell each)
+CELL_EXPRESSION_CACHE <- 8
 
 ds_reduction <- function(ds, key) {
     if (is.null(ds$cells_h)) stop("Dataset has no cell-level file")

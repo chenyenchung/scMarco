@@ -160,3 +160,40 @@ test_that("unordered splits with a cells file get the box view by default", {
                                   trend = "line"))
   expect_equal(ds$trend, "line")
 })
+
+test_that("cached() keeps the most recent entries and evaluates only on a miss", {
+  env <- new.env(parent = emptyenv())
+  n <- 0
+  get <- function(key) cached(env, key, size = 2, {n <<- n + 1; toupper(key)})
+  expect_equal(get("a"), "A")
+  expect_equal(get("a"), "A")
+  expect_equal(n, 1)
+  get("b"); get("c")
+  expect_setequal(ls(env), c("b", "c"))
+  expect_equal(get("b"), "B")
+  expect_equal(n, 3)
+  # a failed computation stores nothing
+  expect_error(cached(env, "d", 2, stop("no")), "no")
+  expect_setequal(ls(env), c("b", "c"))
+})
+
+test_that("datasets keep two margins and their recent genes' cell expression", {
+  dir <- withr::local_tempdir()
+  suppressMessages(suppressWarnings(p <- make_pair(dir)))
+  ds <- ds_load("toy-cache", list(label = "Toy", clusters = p$clusters, cells = p$cells))
+  b1 <- ds_binarize(ds, 0.1)
+  ds_binarize(ds, 0.2); ds_binarize(ds, 0.3)
+  expect_setequal(ls(ds$binarized), format(c(0.2, 0.3), nsmall = 3))
+  expect_identical(ds_binarize(ds, 0.1), b1)
+
+  reads <- 0
+  local_mocked_bindings(h5ad_x_gene = function(h, gene) {
+    reads <<- reads + 1
+    p$x[, match(gene, c("a", "b", "c"))]
+  })
+  for (i in 1:3) expect_equal(ds_cell_expression(ds, "b"), p$x[, 2])
+  expect_equal(reads, 1)
+  for (g in rep(c("a", "c"), 5)) ds_cell_expression(ds, g)
+  expect_equal(reads, 3)
+  expect_lte(length(ls(ds$cell_expression)), CELL_EXPRESSION_CACHE)
+})
