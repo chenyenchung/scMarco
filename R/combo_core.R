@@ -64,12 +64,6 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
         margin > 0, margin <= 0.5
     )
     genes <- colnames(prob)
-    on <- array(
-        FALSE,
-        dim = c(length(genes), length(clusters), length(splits)),
-        dimnames = list(genes, clusters, splits)
-    )
-    ambiguous <- on
     present <- matrix(
         FALSE, length(clusters), length(splits),
         dimnames = list(clusters, splits)
@@ -87,10 +81,16 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
     off <- is.na(prob) | prob <= margin + eps
     hit <- !off & prob >= 1 - margin - eps
     unsure <- !off & !hit
-    for (i in seq_len(nrow(prob))) {
-        on[, ci[i], si[i]] <- hit[i, ]
-        ambiguous[, ci[i], si[i]] <- unsure[i, ]
-    }
+
+    # Fill genes x (clusters * splits) matrices, whose column (si - 1) *
+    # n_clusters + ci is slice [, ci, si] of the final array, with one
+    # assignment each
+    n_cl <- length(clusters)
+    col <- (si - 1L) * n_cl + ci
+    on <- matrix(FALSE, length(genes), n_cl * length(splits))
+    ambiguous <- on
+    on[, col] <- t(hit)
+    ambiguous[, col] <- t(unsure)
 
     if (is.null(bimodal)) {
         bimodal <- matrix(
@@ -99,11 +99,13 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
         )
     } else {
         bimodal <- bimodal[genes, splits, drop = FALSE]
-        for (s in seq_along(splits)) {
-            on[!bimodal[, s], , s] <- FALSE
-            ambiguous[!bimodal[, s], , s] <- FALSE
-        }
+        # a gene non-bimodal in a split is neither ON nor ambiguous there
+        by_col <- bimodal[, rep(seq_along(splits), each = n_cl), drop = FALSE]
+        on <- on & by_col
+        ambiguous <- ambiguous & by_col
     }
+    dim(on) <- dim(ambiguous) <- c(length(genes), n_cl, length(splits))
+    dimnames(on) <- dimnames(ambiguous) <- list(genes, clusters, splits)
 
     structure(
         list(
