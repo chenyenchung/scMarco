@@ -302,8 +302,9 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #'   `schema_version` (the scMarco schema, as `format_version` of the
 #'   dataset files) and `binarizer_version`
 #'   (of the binarizer that fit it). [merge_mixture_fits()] and
-#'   [call_mixture()] refuse objects whose versions differ from the running
-#'   scMarco's, e.g. fits saved by an older release.
+#'   [call_mixture()] refuse a newer schema or binarizer; fits of an older
+#'   binarizer (e.g. 1.0) are read and called with a warning recommending a
+#'   refit, and fits of different binarizers are never merged.
 #' @seealso [make_pseudobulk()] for the input, [call_mixture()],
 #'   [add_probability()].
 #' @references Davis FP, Nern A, Picard S, et al. (2020). A genetic, genomic,
@@ -445,11 +446,22 @@ check_mixture <- function(x, what = "fit") {
                 SCMARCO_FORMAT_VERSION) > 0) "update scMarco" else
                 "refit it with fit_mixture()")
     }
+    # Fits of an older binarizer (e.g. 1.0) are read and called with a
+    # warning; newer or invalid versions are refused
     v <- x$binarizer_version
-    if (!identical(v, SCMARCO_BINARIZER_VERSION)) {
-        fail(what, " was fit by binarizer ", format(v), " but this scMarco's is ",
-            SCMARCO_BINARIZER_VERSION, "; refit it, or call it with the scMarco ",
-            "release that fit it")
+    status <- binarizer_status(v)
+    if (status %in% c("missing", "invalid", "external")) {
+        fail(what, " records no valid binarizer version (", format(v), "); refit it ",
+            "with fit_mixture()")
+    }
+    if (status == "newer") {
+        fail(what, " was fit by binarizer ", v, ", newer than this scMarco's (",
+            SCMARCO_BINARIZER_VERSION, "); update scMarco")
+    }
+    if (status == "older") {
+        warning(what, " was fit by binarizer ", v, "; this scMarco's is ",
+            SCMARCO_BINARIZER_VERSION, ". It is read and called as fit, but ",
+            "refitting with fit_mixture() is recommended.", call. = FALSE)
     }
     invisible(TRUE)
 }
@@ -474,6 +486,13 @@ merge_mixture_fits <- function(...) {
     if (length(parts) == 1 && !inherits(parts[[1]], "scmarco_mixture")) parts <- parts[[1]]
     if (!all(vapply(parts, inherits, logical(1), "scmarco_mixture"))) {
         fail("merge_mixture_fits() takes fits from fit_mixture()")
+    }
+    # chunks from different binarizers are never merged
+    versions <- vapply(parts, function(p) format(p$binarizer_version), "")
+    if (length(unique(versions)) > 1) {
+        fail("Fits from different binarizers cannot be merged (",
+            paste(unique(versions), collapse = ", "), "); refit every chunk with ",
+            "the same scMarco")
     }
     for (i in seq_along(parts)) check_mixture(parts[[i]], sprintf("fit %d", i))
     first <- parts[[1]]

@@ -13,7 +13,8 @@ SCMARCO_FORMAT_VERSION <- "2.0"
 # Version of the binarizer: fit_mixture() + call_mixture(). Bump it when a
 # change alters the fits or the probabilities; datasets binarized with an
 # older version then load with a warning to rerun the binarizer, and fits of
-# another version cannot be merged or called. Recorded in fits, in
+# a newer version are refused; fits of an older version are read and
+# called with a warning, and fits of different versions are never merged. Recorded in fits, in
 # call_mixture() tables and in uns/scmarco/binarization/version.
 SCMARCO_BINARIZER_VERSION <- "1.0"
 # binarization/version of probabilities that did not come from scMarco's

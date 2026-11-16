@@ -50,10 +50,19 @@ test_that("fit objects record the schema and binarizer versions", {
   old <- fit
   old$schema_version <- "9.0"
   expect_error(check_mixture(old), "update scMarco")
+  # an older binarizer is read with a warning recommending a refit
   old <- fit
   old$binarizer_version <- "0.9"
-  expect_error(check_mixture(old), "fit by binarizer 0.9")
-  expect_error(merge_mixture_fits(fit, old), "fit 2 was fit by binarizer 0.9")
+  expect_warning(check_mixture(old), "fit by binarizer 0.9.*refitting with fit_mixture\\(\\) is recommended")
+  # a newer or invalid one is refused
+  new <- fit
+  new$binarizer_version <- "9.9"
+  expect_error(check_mixture(new), "newer than this scMarco's")
+  bad <- fit
+  bad$binarizer_version <- "x"
+  expect_error(check_mixture(bad), "no valid binarizer version")
+  # chunks from different binarizers are never merged
+  expect_error(merge_mixture_fits(fit, old), "different binarizers cannot be merged")
 })
 
 test_that("merged fits must share their settings", {

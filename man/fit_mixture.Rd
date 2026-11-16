@@ -53,8 +53,9 @@ parameters, and \code{converged}), and the versions that make up its contract:
 \code{schema_version} (the scMarco schema, as \code{format_version} of the
 dataset files) and \code{binarizer_version}
 (of the binarizer that fit it). \code{\link[=merge_mixture_fits]{merge_mixture_fits()}} and
-\code{\link[=call_mixture]{call_mixture()}} refuse objects whose versions differ from the running
-scMarco's, e.g. fits saved by an older release.
+\code{\link[=call_mixture]{call_mixture()}} refuse a newer schema or binarizer; fits of an older
+binarizer (e.g. 1.0) are read and called with a warning recommending a
+refit, and fits of different binarizers are never merged.
 }
 \description{
 Fits the log-normalized expression of each gene across pseudobulk samples
