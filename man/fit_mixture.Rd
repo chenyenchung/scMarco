@@ -13,7 +13,8 @@ fit_mixture(
   n_iter = 500,
   n_folds = 10,
   cores = min(4, parallel::detectCores(), na.rm = TRUE),
-  seed = 42
+  seed = 42,
+  n_chains_bimodal = 8
 )
 
 merge_mixture_fits(...)
@@ -35,19 +36,26 @@ several replicates, e.g. its cells pooled into two random halves with
 
 \item{n_folds}{Number of cross-validation folds.}
 
-\item{cores}{Cores for the 4 Stan chains (see Details for \code{cores = 1}).}
+\item{cores}{Cores for the Stan chains (see Details for \code{cores = 1}).}
 
 \item{seed}{Random seed (see Details); \code{NULL} uses the current random
 state.}
+
+\item{n_chains_bimodal}{Chains of the full bimodal fit (default 8). Their
+agreement on each cluster is the convergence check; with fewer than 4,
+chains in different modes are often missed (a warning says so). The
+unimodal and cross-validation fits run 4 chains.}
 
 \item{...}{\code{scmarco_mixture} fits of the same samples, or one list of
 them, e.g. chunks of genes fit in parallel.}
 }
 \value{
 A \code{scmarco_mixture} list: \code{fits}, one fit per gene (\code{bimodal}
-and \code{unimodal} posterior medians, \code{elpd}), the input \code{lognorm},
-\code{cluster} and \code{replicate}, the fit \code{settings} (\code{n_iter}, \code{n_folds},
-\code{seed}, \code{cores}, \code{prior}), \code{convergence} (one row per gene: the largest Rhat
+and \code{unimodal} posterior medians, \code{elpd}; the bimodal fit also keeps
+its parameter \code{draws}, each cluster's posterior mean P(On) \code{p_on_mean}
+and the spread of its chains' means \code{chain_spread}), the input
+\code{lognorm}, \code{cluster} and \code{replicate}, the fit \code{settings} (\code{n_iter},
+\code{n_folds}, \code{seed}, \code{cores}, \code{prior}, \code{n_chains_bimodal}, \code{n_chains}), \code{convergence} (one row per gene: the largest Rhat
 and smallest effective sample size of the bimodal and unimodal fits'
 parameters, and \code{converged}), and the versions that make up its contract:
 \code{schema_version} (the scMarco schema, as \code{format_version} of the

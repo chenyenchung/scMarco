@@ -15,9 +15,10 @@
 # (https://github.com/fredpdavis/opticlobe/pull/1).
 #
 # Binarizer 1.1 changes the fit (specification in the scMarco_test design
-# record): a per-gene prior on the component means instead of normal(7, 5).
-# Binarizer 1.0 is the original implementation (equal to mm_marker within
-# seed noise).
+# record): a per-gene prior on the component means instead of normal(7, 5),
+# 8 chains for the full bimodal fit, and the parameter draws, posterior mean
+# P(On) and chain spread kept per gene. Binarizer 1.0 is the original
+# implementation (equal to mm_marker within seed noise).
 #
 # Copyright (c) 2018-2020 Fred P. Davis (original opticlobe code)
 # Copyright (c) 2023-2026 Yen-Chung Chen (this adaptation)
@@ -27,9 +28,12 @@
 # Stan settings of the pipeline
 MIXTURE_CHAINS <- 4
 MIXTURE_ADAPT_DELTA <- 0.98
-# Binarizer 1.1: the per-gene prior on the component means,
+# Binarizer 1.1: chains of the full bimodal fit (its chains' agreement on
+# each cluster is the convergence check; the other 21 Stan runs per gene keep
+# MIXTURE_CHAINS), and the per-gene prior on the component means,
 # normal(midpoint, range / MIXTURE_PRIOR_SD_DIV) of the gene's values with an
 # SD floor (replacing the original normal(7, 5), set for bulk log1p(TPM))
+MIXTURE_CHAINS_BIMODAL <- 8
 MIXTURE_PRIOR_SD_DIV <- 3
 MIXTURE_PRIOR_SD_FLOOR <- 0.01
 # Bimodal genes' samples with P(On) above / below these define the global
@@ -145,13 +149,13 @@ MIXTURE_SAVED_PARS <- list(
     unimodal_cv = "log_lik_h"
 )
 
-run_stan <- function(name, data, n_iter, cores) {
+run_stan <- function(name, data, n_iter, cores, chains = MIXTURE_CHAINS) {
     # Seeds come from R's RNG, so set.seed() makes a run reproducible. With
     # cores = 1 rstan takes more draws from it, so the seeds of later runs
     # differ from those of the pipeline, which ran its chains in parallel
     rstan::sampling(mixture_stan_model(name), data = data,
         pars = MIXTURE_SAVED_PARS[[name]],
-        chains = MIXTURE_CHAINS, iter = n_iter, cores = cores,
+        chains = chains, iter = n_iter, cores = cores,
         control = list(adapt_delta = MIXTURE_ADAPT_DELTA), refresh = -1,
         verbose = FALSE)
 }
@@ -201,6 +205,31 @@ mixture_prior <- function(x) {
         prior_off_mean = (lo + hi) / 2, prior_off_sd = sdv)
 }
 
+log_p_on_draws <- function(par, x, cl, n_cl) {
+    # Per-draw log P(On) of each cluster from the parameter draws, as
+    # bimodal.stan computes log_p_on_cluster
+    # par: draws x 4 (mu_on, mu_off, sd1, pi_on); returns draws x n_cl
+    on <- sapply(seq_len(nrow(par)), function(d) stats::dnorm(x, par[d, 1], par[d, 3], log = TRUE))
+    off <- sapply(seq_len(nrow(par)), function(d) stats::dnorm(x, par[d, 2], par[d, 3], log = TRUE))
+    con <- rowsum(on, cl, reorder = TRUE)[seq_len(n_cl), , drop = FALSE]
+    coff <- rowsum(off, cl, reorder = TRUE)[seq_len(n_cl), , drop = FALSE]
+    a <- sweep(con, 2, log(par[, 4]), "+")
+    b <- sweep(coff, 2, log1p(-par[, 4]), "+")
+    m <- pmax(a, b)
+    t(a - m - log(exp(a - m) + exp(b - m)))
+}
+
+cluster_summaries <- function(draws, x, cl, n_cl) {
+    # Posterior mean of each cluster's P(On), and the spread (max - min) of
+    # the chains' means: chains that disagree on a cluster's state
+    # draws: iter x chain x 4 array of mu_on, mu_off, sd1, pi_on
+    par <- matrix(draws, ncol = 4)
+    chain <- rep(seq_len(dim(draws)[2]), each = dim(draws)[1])
+    p <- exp(log_p_on_draws(par, x, cl, n_cl))
+    cm <- rowsum(p, chain) / as.vector(table(chain))
+    list(p_on_mean = colMeans(p), chain_spread = apply(cm, 2, max) - apply(cm, 2, min))
+}
+
 log_mean_exp <- function(ll) {
     # elpd of each held-out sample: log of its mean likelihood over draws
     # ll: draws x samples log likelihoods
@@ -208,7 +237,8 @@ log_mean_exp <- function(ll) {
         numeric(1)) - log(nrow(ll))
 }
 
-fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cores) {
+fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cores,
+                     n_chains_bimodal = MIXTURE_CHAINS_BIMODAL) {
     # Bimodal and unimodal fits of one gene and their k-fold cross-validated
     # expected log predictive densities (elpd)
     # x: expression of each sample; cluster_idx, replicate_idx: 1-based
@@ -216,13 +246,17 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
     #   labels kept apart by partition_folds()
     # Binarizer 1.1: the bimodal models take the per-gene prior
     # (mixture_prior(): the gene's values for the full fit, the training
-    # fold's for each CV fit)
+    # fold's for each CV fit); the full bimodal fit runs n_chains_bimodal
+    # chains and keeps its parameter draws, the posterior mean of each
+    # cluster's P(On) and the spread of the chains' means
     n <- length(x)
     data <- list(n_samples = n, n_clusters = max(cluster_idx),
         n_replicates = max(replicate_idx), log_e = x, cluster = cluster_idx,
         replicate = replicate_idx)
-    stats <- rstan::summary(run_stan("bimodal", c(data, mixture_prior(x)), n_iter,
-        cores))$summary
+    bim <- run_stan("bimodal", c(data, mixture_prior(x)), n_iter, cores,
+        chains = n_chains_bimodal)
+    stats <- rstan::summary(bim)$summary
+    draws <- as.array(bim, pars = c("mu_on", "mu_off", "sd1", "pi_on"))
     vec <- function(par, len) paste0(par, "[", seq_len(len), "]")
     bimodal <- list(
         log_p_on_cluster = unname(stats[vec("log_p_on_cluster", data$n_clusters), "50%"]),
@@ -232,8 +266,10 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
         off_level = stats["mu_off", "50%"],
         sd = stats["sd1", "50%"],
         pi = stats["pi_on", "50%"],
-        diagnostics = stats[c("mu_on", "mu_off", "sd1", "pi_on"), c("Rhat", "n_eff")]
+        diagnostics = stats[c("mu_on", "mu_off", "sd1", "pi_on"), c("Rhat", "n_eff")],
+        draws = draws
     )
+    bimodal <- c(bimodal, cluster_summaries(draws, x, cluster_idx, data$n_clusters))
     stats <- rstan::summary(run_stan("unimodal", data[c("n_samples", "log_e")],
         n_iter, cores))$summary
     unimodal <- list(
@@ -315,14 +351,20 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #' @param genes Genes to fit; `NULL` fits every row of `lognorm`.
 #' @param n_iter Stan iterations per chain, half of them warm-up.
 #' @param n_folds Number of cross-validation folds.
-#' @param cores Cores for the 4 Stan chains (see Details for `cores = 1`).
+#' @param cores Cores for the Stan chains (see Details for `cores = 1`).
 #' @param seed Random seed (see Details); `NULL` uses the current random
 #'   state.
+#' @param n_chains_bimodal Chains of the full bimodal fit (default 8). Their
+#'   agreement on each cluster is the convergence check; with fewer than 4,
+#'   chains in different modes are often missed (a warning says so). The
+#'   unimodal and cross-validation fits run 4 chains.
 #'
 #' @return A `scmarco_mixture` list: `fits`, one fit per gene (`bimodal`
-#'   and `unimodal` posterior medians, `elpd`), the input `lognorm`,
-#'   `cluster` and `replicate`, the fit `settings` (`n_iter`, `n_folds`,
-#'   `seed`, `cores`, `prior`), `convergence` (one row per gene: the largest Rhat
+#'   and `unimodal` posterior medians, `elpd`; the bimodal fit also keeps
+#'   its parameter `draws`, each cluster's posterior mean P(On) `p_on_mean`
+#'   and the spread of its chains' means `chain_spread`), the input
+#'   `lognorm`, `cluster` and `replicate`, the fit `settings` (`n_iter`,
+#'   `n_folds`, `seed`, `cores`, `prior`, `n_chains_bimodal`, `n_chains`), `convergence` (one row per gene: the largest Rhat
 #'   and smallest effective sample size of the bimodal and unimodal fits'
 #'   parameters, and `converged`), and the versions that make up its contract:
 #'   `schema_version` (the scMarco schema, as `format_version` of the
@@ -349,8 +391,20 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 fit_mixture <- function(lognorm, cluster, replicate = NULL, genes = NULL,
                         n_iter = 500, n_folds = 10,
                         cores = min(4, parallel::detectCores(), na.rm = TRUE),
-                        seed = 42) {
+                        seed = 42, n_chains_bimodal = 8) {
     need_packages(c("rstan", "matrixStats"), "fit_mixture()")
+    if (!is.numeric(n_chains_bimodal) || length(n_chains_bimodal) != 1 ||
+        is.na(n_chains_bimodal) || n_chains_bimodal < 2 ||
+        n_chains_bimodal != round(n_chains_bimodal)) {
+        fail("n_chains_bimodal must be a whole number of at least 2")
+    }
+    n_chains_bimodal <- as.integer(n_chains_bimodal)
+    if (n_chains_bimodal < 4) {
+        warning("n_chains_bimodal = ", n_chains_bimodal, ": with fewer than 4 chains, ",
+            "chains that settle in different modes are often missed, so fewer ",
+            "unresolved clusters are flagged (default ", MIXTURE_CHAINS_BIMODAL, ")",
+            call. = FALSE)
+    }
     if (is.data.frame(lognorm)) {
         not_num <- colnames(lognorm)[!vapply(lognorm, is.numeric, logical(1))]
         if (length(not_num) > 0) fail("lognorm columns must be numeric: ", first_few(not_num))
@@ -389,12 +443,13 @@ fit_mixture <- function(lognorm, cluster, replicate = NULL, genes = NULL,
         message(sprintf("Fitting %s (%d/%d)", genes[i], i, length(genes)))
         if (!is.null(seed)) set.seed(seed + match(genes[i], rownames(lognorm)))
         fits[[genes[i]]] <- fit_gene(as.numeric(lognorm[genes[i], ]), cluster_idx,
-            replicate_idx, labels, n_folds, n_iter, cores)
+            replicate_idx, labels, n_folds, n_iter, cores, n_chains_bimodal)
     }
     out <- new_mixture(fits, lognorm[genes, , drop = FALSE], cluster, replicate,
         settings = list(n_iter = n_iter, n_folds = n_folds,
             seed = if (is.null(seed)) NA_real_ else seed, cores = cores,
-            prior = "range"))
+            prior = "range", n_chains_bimodal = n_chains_bimodal,
+            n_chains = MIXTURE_CHAINS))
     bad <- not_converged(out)
     if (length(bad) > 0) warning(convergence_note(bad, length(genes)), call. = FALSE)
     out
@@ -529,9 +584,10 @@ merge_mixture_fits <- function(...) {
             fail("Fits to merge must share their samples, clusters and replicates")
         }
         # cores may differ between jobs; the rest may not
-        keys <- c("n_iter", "n_folds", "seed", "prior")
+        keys <- c("n_iter", "n_folds", "seed", "prior", "n_chains_bimodal", "n_chains")
         if (!identical(p$settings[keys], first$settings[keys])) {
-            fail("Fits to merge must share their settings (n_iter, n_folds, seed, prior)")
+            fail("Fits to merge must share their settings (n_iter, n_folds, seed, ",
+                "prior, n_chains_bimodal, n_chains)")
         }
     }
     fits <- do.call(c, lapply(parts, `[[`, "fits"))

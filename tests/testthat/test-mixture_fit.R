@@ -135,8 +135,12 @@ test_that("fit_mixture fits genes with Stan", {
   expect_length(fit$fits$geneA$bimodal$log_p_on_cluster, 6)
   expect_length(fit$fits$geneA$elpd$bimodal_i, n)
   expect_gt(fit$fits$geneA$elpd$diff, 0)
-  # binarizer 1.1: the per-gene prior is recorded
+  # binarizer 1.1: 8 chains on the bimodal fit, draws and summaries kept
+  expect_identical(dim(fit$fits$geneA$bimodal$draws), c(100L, 8L, 4L))
+  expect_length(fit$fits$geneA$bimodal$p_on_mean, 6)
+  expect_length(fit$fits$geneA$bimodal$chain_spread, 6)
   expect_identical(fit$settings$prior, "range")
+  expect_identical(fit$settings$n_chains_bimodal, 8L)
 
   # seeded per gene: chunking does not matter, the caller's RNG is untouched
   set.seed(99)
@@ -216,4 +220,30 @@ test_that("the binarizer 1.1 prior is centred on the midpoint with range / 3", {
   expect_equal(p$prior_off_sd, 1)
   # constant values: the SD floor
   expect_equal(mixture_prior(rep(0.2, 4))$prior_on_sd, MIXTURE_PRIOR_SD_FLOOR)
+})
+
+test_that("cluster summaries come from the draws: posterior mean and chain spread", {
+  # 2 chains x 3 draws of (mu_on, mu_off, sd1, pi_on)
+  d <- array(c(2, 2, 2, 2, 2, 2,  0, 0, 0, 0, 0, 0,  0.3, 0.3, 0.3, 0.3, 0.3, 0.3,
+               0.5, 0.5, 0.5, 0.5, 0.5, 0.5), dim = c(3, 2, 4))
+  x <- c(2, 2.1, 0, 0.1)            # cluster 1 ON, cluster 2 OFF
+  s <- cluster_summaries(d, x, c(1, 1, 2, 2), 2)
+  expect_gt(s$p_on_mean[1], 0.99)
+  expect_lt(s$p_on_mean[2], 0.01)
+  expect_equal(unname(s$chain_spread), c(0, 0), tolerance = 1e-12)
+  # identical draws in both chains -> no spread; recomputation matches the
+  # closed form for one draw
+  lp <- log_p_on_draws(matrix(d, ncol = 4)[1, , drop = FALSE], x, c(1, 1, 2, 2), 2)
+  on <- sum(dnorm(x[1:2], 2, 0.3, log = TRUE)); off <- sum(dnorm(x[1:2], 0, 0.3, log = TRUE))
+  expect_equal(unname(lp[1, 1]), log(0.5) + on - log(0.5 * exp(on) + 0.5 * exp(off)))
+})
+
+test_that("fit_mixture checks n_chains_bimodal", {
+  skip_if_not_installed("rstan")
+  skip_if_not_installed("matrixStats")
+  lognorm <- matrix(1, 1, 4, dimnames = list("g", paste0("s", 1:4)))
+  expect_error(fit_mixture(lognorm, cluster = c("1", "1", "2", "2"), n_chains_bimodal = 1),
+               "whole number of at least 2")
+  expect_error(fit_mixture(lognorm, cluster = c("1", "1", "2", "2"), n_chains_bimodal = 2.5),
+               "whole number of at least 2")
 })
