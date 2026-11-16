@@ -135,6 +135,8 @@ test_that("fit_mixture fits genes with Stan", {
   expect_length(fit$fits$geneA$bimodal$log_p_on_cluster, 6)
   expect_length(fit$fits$geneA$elpd$bimodal_i, n)
   expect_gt(fit$fits$geneA$elpd$diff, 0)
+  # binarizer 1.1: the per-gene prior is recorded
+  expect_identical(fit$settings$prior, "range")
 
   # seeded per gene: chunking does not matter, the caller's RNG is untouched
   set.seed(99)
@@ -204,4 +206,14 @@ test_that("compiled Stan models are cached on disk", {
   suppressMessages(cached_stan_model("m", stan, compile, usable, dir = ""))
   expect_equal(compiled, 4)
   expect_length(list.files(dir, "\\.tmp$"), 0)
+})
+
+test_that("the binarizer 1.1 prior is centred on the midpoint with range / 3", {
+  p <- mixture_prior(c(0, 0.5, 3))
+  expect_equal(p$prior_on_mean, 1.5)
+  expect_equal(p$prior_off_mean, 1.5)
+  expect_equal(p$prior_on_sd, 1)
+  expect_equal(p$prior_off_sd, 1)
+  # constant values: the SD floor
+  expect_equal(mixture_prior(rep(0.2, 4))$prior_on_sd, MIXTURE_PRIOR_SD_FLOOR)
 })

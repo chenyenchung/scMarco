@@ -16,7 +16,7 @@ SCMARCO_FORMAT_VERSION <- "2.0"
 # a newer version are refused; fits of an older version are read and
 # called with a warning, and fits of different versions are never merged. Recorded in fits, in
 # call_mixture() tables and in uns/scmarco/binarization/version.
-SCMARCO_BINARIZER_VERSION <- "1.0"
+SCMARCO_BINARIZER_VERSION <- "1.1"
 # binarization/version of probabilities that did not come from scMarco's
 # binarizer: tables of the mixture_modeling_smk pipeline, hand-made tables,
 # and migrated legacy databases

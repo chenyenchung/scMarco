@@ -52,8 +52,8 @@ test_that("fit objects record the schema and binarizer versions", {
   expect_error(check_mixture(old), "update scMarco")
   # an older binarizer is read with a warning recommending a refit
   old <- fit
-  old$binarizer_version <- "0.9"
-  expect_warning(check_mixture(old), "fit by binarizer 0.9.*refitting with fit_mixture\\(\\) is recommended")
+  old$binarizer_version <- "1.0"
+  expect_warning(check_mixture(old), "fit by binarizer 1.0.*refitting with fit_mixture\\(\\) is recommended")
   # a newer or invalid one is refused
   new <- fit
   new$binarizer_version <- "9.9"

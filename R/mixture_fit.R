@@ -14,6 +14,11 @@
 # each sample's likelihood over posterior draws
 # (https://github.com/fredpdavis/opticlobe/pull/1).
 #
+# Binarizer 1.1 changes the fit (specification in the scMarco_test design
+# record): a per-gene prior on the component means instead of normal(7, 5).
+# Binarizer 1.0 is the original implementation (equal to mm_marker within
+# seed noise).
+#
 # Copyright (c) 2018-2020 Fred P. Davis (original opticlobe code)
 # Copyright (c) 2023-2026 Yen-Chung Chen (this adaptation)
 # opticlobe carries no license; Fred P. Davis permitted this adaptation and
@@ -22,6 +27,11 @@
 # Stan settings of the pipeline
 MIXTURE_CHAINS <- 4
 MIXTURE_ADAPT_DELTA <- 0.98
+# Binarizer 1.1: the per-gene prior on the component means,
+# normal(midpoint, range / MIXTURE_PRIOR_SD_DIV) of the gene's values with an
+# SD floor (replacing the original normal(7, 5), set for bulk log1p(TPM))
+MIXTURE_PRIOR_SD_DIV <- 3
+MIXTURE_PRIOR_SD_FLOOR <- 0.01
 # Bimodal genes' samples with P(On) above / below these define the global
 # ON / OFF expression distributions that genes without bimodality are
 # compared with
@@ -179,6 +189,18 @@ partition_folds <- function(n, k, labels) {
     folds
 }
 
+mixture_prior <- function(x) {
+    # Binarizer 1.1 prior on both component means (data items of bimodal.stan
+    # and bimodal_cv.stan): normal(midpoint, range / 3) of the values x, the
+    # original normal(7, 5) on 0-14 expressed per gene (Richardson & Green
+    # 1997, data-range priors for mixtures)
+    lo <- min(x)
+    hi <- max(x)
+    sdv <- max((hi - lo) / MIXTURE_PRIOR_SD_DIV, MIXTURE_PRIOR_SD_FLOOR)
+    list(prior_on_mean = (lo + hi) / 2, prior_on_sd = sdv,
+        prior_off_mean = (lo + hi) / 2, prior_off_sd = sdv)
+}
+
 log_mean_exp <- function(ll) {
     # elpd of each held-out sample: log of its mean likelihood over draws
     # ll: draws x samples log likelihoods
@@ -192,11 +214,15 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
     # x: expression of each sample; cluster_idx, replicate_idx: 1-based
     #   indices of each sample's cluster and replicate; labels: replicate
     #   labels kept apart by partition_folds()
+    # Binarizer 1.1: the bimodal models take the per-gene prior
+    # (mixture_prior(): the gene's values for the full fit, the training
+    # fold's for each CV fit)
     n <- length(x)
     data <- list(n_samples = n, n_clusters = max(cluster_idx),
         n_replicates = max(replicate_idx), log_e = x, cluster = cluster_idx,
         replicate = replicate_idx)
-    stats <- rstan::summary(run_stan("bimodal", data, n_iter, cores))$summary
+    stats <- rstan::summary(run_stan("bimodal", c(data, mixture_prior(x)), n_iter,
+        cores))$summary
     vec <- function(par, len) paste0(par, "[", seq_len(len), "]")
     bimodal <- list(
         log_p_on_cluster = unname(stats[vec("log_p_on_cluster", data$n_clusters), "50%"]),
@@ -224,7 +250,7 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
         train <- which(folds != k)
         cv_data <- list(n_t = length(train), n_h = length(held),
             log_e_t = x[train], log_e_h = x[held])
-        bim_fit <- run_stan("bimodal_cv", cv_data, n_iter, cores)
+        bim_fit <- run_stan("bimodal_cv", c(cv_data, mixture_prior(x[train])), n_iter, cores)
         uni_fit <- run_stan("unimodal_cv", cv_data, n_iter, cores)
         bimodal_i[held] <- log_mean_exp(as.matrix(bim_fit, pars = "log_lik_h"))
         unimodal_i[held] <- log_mean_exp(as.matrix(uni_fit, pars = "log_lik_h"))
@@ -296,7 +322,7 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #' @return A `scmarco_mixture` list: `fits`, one fit per gene (`bimodal`
 #'   and `unimodal` posterior medians, `elpd`), the input `lognorm`,
 #'   `cluster` and `replicate`, the fit `settings` (`n_iter`, `n_folds`,
-#'   `seed`, `cores`), `convergence` (one row per gene: the largest Rhat
+#'   `seed`, `cores`, `prior`), `convergence` (one row per gene: the largest Rhat
 #'   and smallest effective sample size of the bimodal and unimodal fits'
 #'   parameters, and `converged`), and the versions that make up its contract:
 #'   `schema_version` (the scMarco schema, as `format_version` of the
@@ -367,7 +393,8 @@ fit_mixture <- function(lognorm, cluster, replicate = NULL, genes = NULL,
     }
     out <- new_mixture(fits, lognorm[genes, , drop = FALSE], cluster, replicate,
         settings = list(n_iter = n_iter, n_folds = n_folds,
-            seed = if (is.null(seed)) NA_real_ else seed, cores = cores))
+            seed = if (is.null(seed)) NA_real_ else seed, cores = cores,
+            prior = "range"))
     bad <- not_converged(out)
     if (length(bad) > 0) warning(convergence_note(bad, length(genes)), call. = FALSE)
     out
@@ -501,10 +528,10 @@ merge_mixture_fits <- function(...) {
             !identical(p$cluster, first$cluster) || !identical(p$replicate, first$replicate)) {
             fail("Fits to merge must share their samples, clusters and replicates")
         }
-        # cores may differ between jobs; n_iter, n_folds and seed may not
-        keys <- c("n_iter", "n_folds", "seed")
+        # cores may differ between jobs; the rest may not
+        keys <- c("n_iter", "n_folds", "seed", "prior")
         if (!identical(p$settings[keys], first$settings[keys])) {
-            fail("Fits to merge must share their settings (n_iter, n_folds, seed)")
+            fail("Fits to merge must share their settings (n_iter, n_folds, seed, prior)")
         }
     }
     fits <- do.call(c, lapply(parts, `[[`, "fits"))

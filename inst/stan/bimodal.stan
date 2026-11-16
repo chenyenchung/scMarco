@@ -6,6 +6,10 @@
 // (https://github.com/fredpdavis/opticlobe; Davis et al. 2020, eLife
 // 9:e50901), as used in mm_marker / mixture_modeling_smk.
 //
+// Binarizer 1.1 replaces the original prior on the means, normal(7, 5),
+// which was set for bulk log1p(TPM) on 0-14, with a per-gene prior
+// (fit_mixture()).
+//
 // Copyright (c) 2018-2020 Fred P. Davis; adaptation (c) 2023-2026
 // Yen-Chung Chen. Released under the MIT license with Fred P. Davis's
 // permission; see inst/COPYRIGHTS.
@@ -17,6 +21,10 @@ data {
   vector[n_samples] log_e;            // expression of each sample
   array[n_samples] int replicate;     // replicate of each sample
   array[n_samples] int cluster;       // cluster of each sample
+  real prior_on_mean;                 // binarizer 1.1: per-gene prior on the
+  real<lower=0> prior_on_sd;          //   means, N(midpoint, range / 3) of the
+  real prior_off_mean;                //   gene's values (training fold for CV)
+  real<lower=0> prior_off_sd;
 }
 
 parameters {
@@ -31,7 +39,8 @@ transformed parameters {
 }
 
 model {
-  mu ~ normal(7, 5);
+  mu[1] ~ normal(prior_off_mean, prior_off_sd);
+  mu[2] ~ normal(prior_on_mean, prior_on_sd);
   for (s in 1:n_samples) {
     target += log_mix(pi_on, normal_lpdf(log_e[s] | mu_on, sd1),
                       normal_lpdf(log_e[s] | mu_off, sd1));
