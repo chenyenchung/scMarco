@@ -79,16 +79,7 @@ make_pseudobulk <- function(counts, cluster, n_samples = 2,
                             method = c("random", "metadata"), group = NULL,
                             min_cells = 10, seed = 42) {
     method <- match.arg(method)
-    if (is.data.frame(counts)) counts <- as.matrix(counts)
-    if (!(is.matrix(counts) && is.numeric(counts)) && !methods::is(counts, "Matrix")) {
-        fail("counts must be a numeric matrix or a sparse Matrix, genes x cells")
-    }
-    counts <- methods::as(counts, "CsparseMatrix")
-    if (is.null(rownames(counts))) fail("counts needs genes as row names")
-    if (any(counts@x < 0)) fail("counts must not be negative")
-    if (any(counts@x != round(counts@x))) {
-        fail("counts must be raw counts (whole numbers), not normalized values")
-    }
+    counts <- as_count_matrix(counts)
     n <- ncol(counts)
     if (length(cluster) != n) fail("cluster has ", length(cluster), " entries for ", n, " cells")
     if (anyNA(cluster)) fail("cluster has missing values")

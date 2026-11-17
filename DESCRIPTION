@@ -24,6 +24,7 @@ Depends:
 Imports:
     anndataR,
     bslib,
+    celda,
     cowplot,
     ggplot2,
     ggrepel,
