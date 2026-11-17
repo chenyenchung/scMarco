@@ -447,7 +447,7 @@ ds_check_config <- function(datasets) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' ds$splits
 #' head(ds$cluster_labels)
 #' @export
@@ -554,27 +554,30 @@ ds_load <- function(id, entry) {
     ds
 }
 
-#' Binarize a dataset at a confidence margin
+#' Binarize a dataset at an ambiguity band
 #'
-#' [binarize()] applied to a dataset. The two most recent margins are cached
+#' [binarize()] applied to a dataset. The two most recent bands are cached
 #' with the dataset.
 #'
 #' @param ds A dataset from [ds_load()].
-#' @param margin Confidence margin in (0, 0.5]: ON when the probability is at
-#'   least `1 - margin`, OFF when it is at most `margin`.
+#' @param band Half-width of the ambiguity band in \[0, 0.5): ON when the
+#'   probability is at least `0.5 + band`, OFF when it is at most
+#'   `0.5 - band`. The app's default is 0.3.
+#' @param margin Deprecated: the former confidence margin, `0.5 - band`.
 #'
 #' @return A binarized dataset (see [binarize()]).
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' dim(b$on)
 #' @export
-ds_binarize <- function(ds, margin) {
-    cached(ds$binarized, format(margin, nsmall = 3), size = 2, binarize(
+ds_binarize <- function(ds, band, margin = NULL) {
+    band <- band_from_margin(if (missing(band)) NULL else band, margin)
+    cached(ds$binarized, format(band, nsmall = 3), size = 2, binarize(
         ds$prob, ds$obs_split, ds$obs_cluster,
         splits = ds$splits, clusters = ds$clusters,
-        margin = margin, bimodal = ds$bimodal
+        band = band, bimodal = ds$bimodal
     ))
 }
 

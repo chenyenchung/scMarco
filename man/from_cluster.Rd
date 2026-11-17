@@ -36,7 +36,7 @@ is ON or ambiguous in any of its splits.
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, margin = 0.1)
+b <- ds_binarize(ds, band = 0.4)
 from_cluster(b, ident = b$clusters[1], required = character(0), min_n = 1)
 }
 \seealso{

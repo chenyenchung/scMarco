@@ -55,7 +55,7 @@ mixture_server <- function(id, ctx) {
                         input$model
                     }
                     list(ds = ctx$ds(), gene = input$gene_of_interest, model = model,
-                        highlight = ctx$idents(), margin = ctx$margin())
+                        highlight = ctx$idents(), band = ctx$band())
                 }
             )
 
@@ -71,7 +71,7 @@ mixture_server <- function(id, ctx) {
                 r <- request()
                 shiny::req(r)
                 with_spinner("Plotting...", mixture_plot(
-                    r$ds, r$gene, r$model, highlight = r$highlight, margin = r$margin
+                    r$ds, r$gene, r$model, highlight = r$highlight, band = r$band
                 ))
             })
 

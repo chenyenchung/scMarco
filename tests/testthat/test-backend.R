@@ -14,9 +14,9 @@ test_that("the SQLite-derived fixture loads as a dataset", {
   expect_identical(ds$analysis_genes, ds$all_genes)
   expect_false(any(grepl("unimodal", names(gene_choices(ds, ds$all_genes)))))
 
-  b <- ds_binarize(ds, 0.5)
+  b <- ds_binarize(ds, 0)
   expect_s3_class(b, "scmarco_binarized")
-  expect_identical(ds_binarize(ds, 0.5), b)
+  expect_identical(ds_binarize(ds, 0), b)
 })
 
 test_that("config overrides win over uns", {
@@ -145,7 +145,7 @@ test_that("a written pair round-trips through the reader", {
   cells_obs <- ds_cells_obs(ds)
   expect_equal(as.character(cells_obs$cluster), c("x", "x", "y", "x", "x"))
 
-  b <- ds_binarize(ds, 0.5)
+  b <- ds_binarize(ds, 0)
   expect_false(b$present["y", "M"])
   expect_false(any(b$on["c", , ]))
 })
@@ -177,14 +177,14 @@ test_that("cached() keeps the most recent entries and evaluates only on a miss",
   expect_setequal(ls(env), c("b", "c"))
 })
 
-test_that("datasets keep two margins and their recent genes' cell expression", {
+test_that("datasets keep two bands and their recent genes' cell expression", {
   dir <- withr::local_tempdir()
   suppressMessages(suppressWarnings(p <- make_pair(dir)))
   ds <- ds_load("toy-cache", list(label = "Toy", clusters = p$clusters, cells = p$cells))
-  b1 <- ds_binarize(ds, 0.1)
-  ds_binarize(ds, 0.2); ds_binarize(ds, 0.3)
+  b1 <- ds_binarize(ds, 0.4)
+  ds_binarize(ds, 0.3); ds_binarize(ds, 0.2)
   expect_setequal(ls(ds$binarized), format(c(0.2, 0.3), nsmall = 3))
-  expect_identical(ds_binarize(ds, 0.1), b1)
+  expect_identical(ds_binarize(ds, 0.4), b1)
 
   reads <- 0
   local_mocked_bindings(h5ad_x_gene = function(h, gene) {

@@ -62,7 +62,7 @@ find_distinct_server <- function(id, ctx, coexp_session) {
                         HTML(paste0(
                             "<p>No gene distinguishes the selected clusters. ",
                             describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$split_plural(), ctx$scope()),
-                            "</p><p>Try a larger confidence margin, fewer required ",
+                            "</p><p>Try a narrower ambiguity band, fewer required ",
                             ctx$split_plural(), ", different clusters, or a broader gene list.</p>"
                         ))
                     )

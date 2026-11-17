@@ -29,6 +29,6 @@ that split.
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, margin = 0.1)
+b <- ds_binarize(ds, band = 0.4)
 onoff_plot(ds, b, b$genes[1:5], b$clusters[1:3])
 }

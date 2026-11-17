@@ -10,8 +10,9 @@ binarize(
   obs_cluster,
   splits,
   clusters,
-  margin,
-  bimodal = NULL
+  band,
+  bimodal = NULL,
+  margin = NULL
 )
 }
 \arguments{
@@ -23,18 +24,21 @@ each row of \code{prob}.}
 
 \item{splits, clusters}{The full, ordered sets of splits and clusters.}
 
-\item{margin}{Confidence margin in (0, 0.5]. At 0.5 there is no ambiguous
-band and ON is \code{prob > 0.5}.}
+\item{band}{Half-width of the ambiguity band around P(On) = 0.5, in
+[0, 0.5). At 0 there is no ambiguous band and ON is \code{prob > 0.5}.
+The default elsewhere in scMarco is 0.3 (ON at 0.8, OFF at 0.2).}
 
 \item{bimodal}{Optional logical matrix, genes x splits: whether the
 mixture model called the gene bimodal in that split.}
+
+\item{margin}{Deprecated: the former confidence margin, \code{0.5 - band}.}
 }
 \value{
 An object of class \code{scmarco_binarized}: a list with the logical
 arrays \code{on} and \code{ambiguous} (genes x clusters x splits), the logical
 matrices \code{present} (clusters x splits), \code{bimodal} (genes x splits) and
 \code{anyon} (genes x clusters: ON or ambiguous in any split, see \code{\link[=any_on]{any_on()}}),
-and \code{genes}, \code{clusters}, \code{splits} and \code{margin}.
+and \code{genes}, \code{clusters}, \code{splits} and \code{band}.
 }
 \description{
 Turns per-cluster probabilities of expression into ON, OFF and ambiguous
@@ -43,7 +47,8 @@ from a dataset and caches the result.
 }
 \details{
 A gene is ON in a cluster and split when its probability is at least
-\code{1 - margin}, OFF when it is at most \code{margin}, and ambiguous in between.
+\code{0.5 + band}, OFF when it is at most \code{0.5 - band}, and ambiguous in
+between (the ambiguity band).
 Ambiguous calls never count as ON, but they do count as off-target
 expression. A gene the mixture model did not call bimodal in a split is
 neither ON nor ambiguous there.
@@ -53,7 +58,7 @@ prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,
     dimnames = list(NULL, c("geneA", "geneB")))
 b <- binarize(prob, obs_split = c("adult", "adult"),
     obs_cluster = c("c1", "c2"), splits = "adult",
-    clusters = c("c1", "c2"), margin = 0.1)
+    clusters = c("c1", "c2"), band = 0.4)
 b$on[, , "adult"]
 b$ambiguous[, , "adult"]
 }

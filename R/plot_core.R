@@ -84,7 +84,7 @@ pct_label_layer <- function(df, box_size) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' onoff_plot(ds, b, b$genes[1:5], b$clusters[1:3])
 #' @export
 onoff_plot <- function(ds, b, genes, idents, show_pct = FALSE) {
@@ -208,7 +208,7 @@ coexp_cell_fraction <- function(ds, genes) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' coexp_plot(ds, b, b$genes[1:2])
 #' @export
 coexp_plot <- function(ds, b, genes, show_pct = FALSE) {
@@ -336,7 +336,7 @@ box_layers <- function(stats, fill = "#CCCCCC") {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' trend_plot(ds, ds$all_genes[1], highlight = ds$clusters[1:2],
 #'     interactive = FALSE)
 #' @export
@@ -661,7 +661,7 @@ mixture_p_on <- function(x, fit) {
 #'
 #' The fitted probability of expression as a function of cluster-average
 #' expression, with every cluster of the model's splits placed on the curve
-#' and the ON/OFF bands of `margin` shaded. Needs a dataset with mixture-model
+#' and the ON/OFF thresholds of the ambiguity band marked. Needs a dataset with mixture-model
 #' parameters (see [add_probability()]).
 #'
 #' @param ds A dataset from [ds_load()].
@@ -669,7 +669,8 @@ mixture_p_on <- function(x, fit) {
 #' @param model A mixture model of the dataset (see
 #'   [mixture_model_choices()]).
 #' @param highlight Cluster IDs to label.
-#' @param margin Confidence margin, as in [ds_binarize()].
+#' @param band Ambiguity band, as in [ds_binarize()].
+#' @param margin Deprecated: the former confidence margin, `0.5 - band`.
 #'
 #' @return A ggplot object (a [cowplot::plot_grid()] of the curve and the
 #'   cluster averages).
@@ -680,9 +681,10 @@ mixture_p_on <- function(x, fit) {
 #'     cells = file.path(toy, "toy.cells.h5ad")
 #' ))
 #' mixture_plot(ds, "Kr", model = mixture_model_choices(ds)[[1]],
-#'     highlight = "1", margin = 0.1)
+#'     highlight = "1", band = 0.4)
 #' @export
-mixture_plot <- function(ds, gene, model, highlight = character(0), margin = 0.5) {
+mixture_plot <- function(ds, gene, model, highlight = character(0), band = 0, margin = NULL) {
+    if (!is.null(margin)) band <- band_from_margin(NULL, margin)
     fit <- ds_mixture_fit(ds, gene, model)
     if (is.null(fit)) return(message_plot("This dataset has no mixture-model fit."))
     splits <- mixture_model_splits(ds, model)
@@ -753,7 +755,7 @@ mixture_plot <- function(ds, gene, model, highlight = character(0), margin = 0.5
 
     curve <- data.frame(x = grid, y = mixture_p_on(grid, fit))
     bottom <- ggplot(curve, aes(x = x, y = y)) +
-        geom_hline(yintercept = unique(c(margin, 1 - margin)), linetype = "dotted",
+        geom_hline(yintercept = unique(c(0.5 - band, 0.5 + band)), linetype = "dotted",
             color = "#7A7A7A") +
         geom_line(linewidth = 1, color = "#1B1B1B") +
         geom_rug(data = avg, aes(x = x), inherit.aes = FALSE,
@@ -781,9 +783,9 @@ mixture_plot <- function(ds, gene, model, highlight = character(0), margin = 0.5
         } else {
             "Cluster average: mean of log-normalized values (no cell-level file); the model was fit on log of the mean, so clusters may sit off the curve."
         },
-        if (margin < 0.5) {
+        if (band > 0) {
             sprintf("Dotted lines: ON at P(On) >= %.2f, OFF at P(On) <= %.2f; ambiguous in between.",
-                1 - margin, margin)
+                0.5 + band, 0.5 - band)
         } else {
             "Dotted line: ON above P(On) = 0.50."
         },

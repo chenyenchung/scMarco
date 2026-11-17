@@ -96,7 +96,7 @@ test_that("filters cascade and define the search universe", {
                "Searching within class = neuron > subclass = Tm (2 of 4 clusters).")
   expect_null(describe_scope(ds, none))
 
-  b <- restrict_clusters(ds_binarize(ds, 0.1), meta_universe(ds, tm))
+  b <- restrict_clusters(ds_binarize(ds, 0.4), meta_universe(ds, tm))
   expect_equal(b$clusters, c("2", "3"))
 })
 

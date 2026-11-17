@@ -46,7 +46,7 @@ test_that("the server runs a From cluster search on the toy dataset", {
   server <- scmarco_server
   formals(server)$config <- config
   shiny::testServer(server, {
-    session$setInputs(dataset = "toy", gene_group_to_use = "All", margin = 10,
+    session$setInputs(dataset = "toy", gene_group_to_use = "All", band = 40,
                       required_splits = character(0), min_n = 1)
     expect_equal(ds()$splits, c("Male", "Female"))
     expect_equal(length(universe()), 8)

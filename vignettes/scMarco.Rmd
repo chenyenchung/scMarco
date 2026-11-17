@@ -89,14 +89,15 @@ that is OFF.
 
 # Binarization
 
-`ds_binarize()` turns the probabilities into calls at a *confidence margin*: a
-gene is ON when its probability is at least `1 - margin`, OFF when it is at
-most `margin`, and ambiguous in between. Ambiguous calls never count as ON,
+`ds_binarize()` turns the probabilities into calls with an *ambiguity band*
+around 0.5: a gene is ON when its probability is at least `0.5 + band`, OFF
+when it is at most `0.5 - band`, and ambiguous in between. The app's default
+band is 0.3 (ON at 0.8, OFF at 0.2). Ambiguous calls never count as ON,
 but they do count as possible off-target expression, so a combination is never
 made to look more specific than the data support.
 
 ```{r binarize}
-b <- ds_binarize(ds, margin = 0.1)
+b <- ds_binarize(ds, band = 0.4)
 b$on["Kr", , "Male"]
 ```
 
@@ -185,7 +186,7 @@ the fitted curve:
 
 ```{r mixture, fig.height = 7}
 mixture_plot(ds, "hth", model = "Male", highlight = c("1", "4", "6"),
-             margin = 0.1)
+             band = 0.4)
 ```
 
 # Building a dataset

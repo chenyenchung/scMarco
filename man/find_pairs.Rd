@@ -7,11 +7,12 @@
 find_pairs(
   clusters,
   out = NULL,
-  cut = 0.5,
+  band = 0,
   required = character(0),
   min_n = 1,
   top = 20,
-  cores = 1
+  cores = 1,
+  cut = NULL
 )
 }
 \arguments{
@@ -20,8 +21,8 @@ find_pairs(
 \item{out}{Optional path: also write the table there as CSV (empty
 \code{cluster_name} = unnamed).}
 
-\item{cut}{Probability above which a gene is ON (the confidence margin of
-\code{\link[=ds_binarize]{ds_binarize()}}).}
+\item{band}{Ambiguity band of \code{\link[=ds_binarize]{ds_binarize()}}; the default 0 calls a gene
+ON above P(On) = 0.5 with no ambiguous band.}
 
 \item{required, min_n}{Both genes must be ON in every \code{required} split and
 in at least \code{min_n} splits.}
@@ -31,6 +32,8 @@ in at least \code{min_n} splits.}
 \item{cores}{Number of clusters ranked at once, in forked processes
 (\code{\link[parallel:mclapply]{parallel::mclapply()}}); one on Windows, which cannot fork. The result
 does not depend on it.}
+
+\item{cut}{Deprecated: the former confidence margin, \code{0.5 - band}.}
 }
 \value{
 A data.frame with columns \code{cluster} (ID), \code{cluster_name} (\code{NA}

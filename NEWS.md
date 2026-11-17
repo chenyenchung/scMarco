@@ -28,6 +28,12 @@
   values of a cell metadata column.
 * Fixed: `fit_mixture()` no longer loops forever when a replicate label has
   a single sample.
+* The confidence margin is now the *ambiguity band* `band`, the half-width
+  around P(On) = 0.5 (ON at P(On) >= 0.5 + band, OFF at <= 0.5 - band), in
+  `binarize()`, `ds_binarize()`, `mixture_plot()`, `find_pairs()` and the
+  app's slider. The app's default is 30% (ON at 0.8, OFF at 0.2, Fred P.
+  Davis's thresholds) instead of a 10% margin. `margin`, and `cut` in
+  `find_pairs()`, still work with a deprecation warning.
 * New synthetic example dataset `toy` (inst/extdata) with a cells file,
   reduction, cluster names and metadata, and mixture-model fits.
 * Fixed: a config without `gene_list` no longer fails to build the UI.

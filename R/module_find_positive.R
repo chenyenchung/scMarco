@@ -52,7 +52,7 @@ find_pos_server <- function(id, ctx) {
                         "No clusters found",
                         paste0(
                             "No cluster expresses ", paste(input$gene, collapse = ", "),
-                            " with probability >= ", 1 - ctx$margin(), ". ",
+                            " with probability >= ", 0.5 + ctx$band(), ". ",
                             describe_splits(ctx$required(), ctx$min_n(), ctx$split_label(), ctx$split_plural(), ctx$scope())
                         )
                     )

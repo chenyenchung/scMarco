@@ -2,26 +2,29 @@
 % Please edit documentation in R/backend_h5ad.R
 \name{ds_binarize}
 \alias{ds_binarize}
-\title{Binarize a dataset at a confidence margin}
+\title{Binarize a dataset at an ambiguity band}
 \usage{
-ds_binarize(ds, margin)
+ds_binarize(ds, band, margin = NULL)
 }
 \arguments{
 \item{ds}{A dataset from \code{\link[=ds_load]{ds_load()}}.}
 
-\item{margin}{Confidence margin in (0, 0.5]: ON when the probability is at
-least \code{1 - margin}, OFF when it is at most \code{margin}.}
+\item{band}{Half-width of the ambiguity band in [0, 0.5): ON when the
+probability is at least \code{0.5 + band}, OFF when it is at most
+\code{0.5 - band}. The app's default is 0.3.}
+
+\item{margin}{Deprecated: the former confidence margin, \code{0.5 - band}.}
 }
 \value{
 A binarized dataset (see \code{\link[=binarize]{binarize()}}).
 }
 \description{
-\code{\link[=binarize]{binarize()}} applied to a dataset. The two most recent margins are cached
+\code{\link[=binarize]{binarize()}} applied to a dataset. The two most recent bands are cached
 with the dataset.
 }
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, margin = 0.1)
+b <- ds_binarize(ds, band = 0.4)
 dim(b$on)
 }

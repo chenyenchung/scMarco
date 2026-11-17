@@ -4,7 +4,14 @@
 \alias{mixture_plot}
 \title{Plot the mixture-model fit of a gene}
 \usage{
-mixture_plot(ds, gene, model, highlight = character(0), margin = 0.5)
+mixture_plot(
+  ds,
+  gene,
+  model,
+  highlight = character(0),
+  band = 0,
+  margin = NULL
+)
 }
 \arguments{
 \item{ds}{A dataset from \code{\link[=ds_load]{ds_load()}}.}
@@ -16,7 +23,9 @@ mixture_plot(ds, gene, model, highlight = character(0), margin = 0.5)
 
 \item{highlight}{Cluster IDs to label.}
 
-\item{margin}{Confidence margin, as in \code{\link[=ds_binarize]{ds_binarize()}}.}
+\item{band}{Ambiguity band, as in \code{\link[=ds_binarize]{ds_binarize()}}.}
+
+\item{margin}{Deprecated: the former confidence margin, \code{0.5 - band}.}
 }
 \value{
 A ggplot object (a \code{\link[cowplot:plot_grid]{cowplot::plot_grid()}} of the curve and the
@@ -25,7 +34,7 @@ cluster averages).
 \description{
 The fitted probability of expression as a function of cluster-average
 expression, with every cluster of the model's splits placed on the curve
-and the ON/OFF bands of \code{margin} shaded. Needs a dataset with mixture-model
+and the ON/OFF thresholds of the ambiguity band marked. Needs a dataset with mixture-model
 parameters (see \code{\link[=add_probability]{add_probability()}}).
 }
 \examples{
@@ -35,5 +44,5 @@ ds <- ds_load("toy", list(
     cells = file.path(toy, "toy.cells.h5ad")
 ))
 mixture_plot(ds, "Kr", model = mixture_model_choices(ds)[[1]],
-    highlight = "1", margin = 0.1)
+    highlight = "1", band = 0.4)
 }

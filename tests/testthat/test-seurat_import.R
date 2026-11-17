@@ -60,7 +60,7 @@ expect_toy_binarized <- function(clusters, cells) {
   expect_equal(ds$clusters, c("1", "2", "10"))
   expect_equal(ds$analysis_genes, c("geneA", "geneB", "geneC"))
   expect_equal(unname(ds$bimodal["geneB", c("Male", "Female")]), c(TRUE, FALSE))
-  b <- ds_binarize(ds, 0.5)
+  b <- ds_binarize(ds, 0)
   expect_equal(from_cluster(b, "1", "Male", 1), c(geneA = 0L))
   expect_false(b$present["2", "Female"])
   expect_false(any(b$on["geneD", , ])) # unimodal everywhere -> never ON
@@ -173,7 +173,7 @@ test_that("legacy identities and wide table still build in one step", {
 
   ds <- ds_load("toy_legacy", list(label = "toy", clusters = clusters))
   expect_true(all(ds$bimodal["geneB", ]))
-  b <- ds_binarize(ds, 0.5)
+  b <- ds_binarize(ds, 0)
   expect_equal(from_cluster(b, "1", "Male", 1), c(geneA = 0L))
 })
 

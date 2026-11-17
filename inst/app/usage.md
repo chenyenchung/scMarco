@@ -57,12 +57,12 @@ highlight (**Plot expression trend**). Annotated clusters are shown as
 `name (id)`, e.g. `Mi4 (154)`, and unannotated ones by their ID; you can type
 either to search.
 
-#### Confidence margin
+#### Ambiguity band
 
 A gene is **ON** in a cluster when its probability of being expressed is at
-least 100% minus the margin, and **OFF** when it is at most the margin; in
-between it is **ambiguous**. With the default 10%, ON is ≥ 0.9, OFF is ≤ 0.1
-and (0.1, 0.9) is ambiguous. At 50% there is no ambiguous band and ON means
+least 50% plus the band, and **OFF** when it is at most 50% minus the band; in
+between it is **ambiguous**. With the default 30%, ON is ≥ 0.8, OFF is ≤ 0.2
+and (0.2, 0.8) is ambiguous. At 0% there is no ambiguous band and ON means
 greater than 0.5.
 
 Ambiguous calls behave like `NA`: they never count as ON for the cluster you
@@ -137,7 +137,7 @@ cluster averages (how many clusters express the gene at each level) with the
 two Gaussians the mixture model fit, and the subtitle says whether the gene was
 called bimodal. The bottom panel is the resulting P(On) curve, which rises from
 0 to 1 between the OFF and ON levels; arrows point to the clusters of interest
-on it, and the dotted lines mark the confidence margin (ON above the upper
+on it, and the dotted lines mark the ambiguity band (ON above the upper
 one, OFF below the lower one). Shown only for
 datasets that store the model's fit parameters.
 

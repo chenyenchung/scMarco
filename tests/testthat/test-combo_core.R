@@ -1,6 +1,6 @@
 # Toy dataset: 5 genes, clusters A/B/C, splits s1/s2/s3; C is absent from s3.
 # Values are probabilities; rows are split|cluster observations.
-toy <- function(margin = 0.5, bimodal = NULL) {
+toy <- function(band = 0, bimodal = NULL) {
   obs <- data.frame(
     split = c("s1", "s1", "s1", "s2", "s2", "s2", "s3", "s3"),
     cluster = c("A", "B", "C", "A", "B", "C", "A", "B")
@@ -19,7 +19,7 @@ toy <- function(margin = 0.5, bimodal = NULL) {
   colnames(prob) <- paste0("g", 1:5)
   binarize(prob, obs$split, obs$cluster,
            splits = c("s1", "s2", "s3"), clusters = c("A", "B", "C"),
-           margin = margin, bimodal = bimodal)
+           band = band, bimodal = bimodal)
 }
 
 test_that("binarize marks absent clusters and uses a strict threshold", {
@@ -151,8 +151,8 @@ test_that("a non-bimodal gene makes co-expression undetermined, like NA", {
   expect_equal(state("B", "s3"), "Non-bimodal")
 })
 
-test_that("calls inside the confidence margin are ambiguous and never help", {
-  b <- toy(margin = 0.2)
+test_that("calls inside the ambiguity band are ambiguous and never help", {
+  b <- toy(band = 0.3)
   # 0.9 is ON, 0.1 is OFF, 0.5 (g5 in s1 A) is ambiguous
   expect_true(b$on["g1", "A", "s1"])
   expect_false(b$on["g5", "A", "s1"])
@@ -164,14 +164,14 @@ test_that("calls inside the confidence margin are ambiguous and never help", {
   expect_equal(offtarget_counts(b, "g5", exclude = "B"), c(g5 = 1L))
   expect_equal(state_table(b, "g5", clusters = "A")$state,
                c("Ambiguous", "Not expressed", "Not expressed"))
-  # the band edges are not ambiguous: margin 0.1 makes 0.9 ON and 0.1 OFF
-  b <- toy(margin = 0.1)
+  # the band edges are not ambiguous: band 0.4 makes 0.9 ON and 0.1 OFF
+  b <- toy(band = 0.4)
   expect_true(b$on["g1", "A", "s1"])
   expect_false(b$ambiguous["g1", "B", "s1"])
 })
 
 test_that("an ambiguous gene makes co-expression undetermined", {
-  b <- toy(margin = 0.2)
+  b <- toy(band = 0.3)
   co <- coexp_data(NULL, b, c("g1", "g5"))
   co <- co[co$gene == "Co-expressed", ]
   state <- function(cl, s) co$state[co$cluster == cl & co$split == s]
@@ -199,14 +199,14 @@ test_that("any_on reads the matrix binarize() stores, also after restricting", {
   }
   bimodal <- matrix(TRUE, 5, 3, dimnames = list(paste0("g", 1:5), c("s1", "s2", "s3")))
   bimodal["g5", "s1"] <- FALSE
-  for (b in list(toy(margin = 0.1), toy(margin = 0.1, bimodal = bimodal))) {
+  for (b in list(toy(band = 0.4), toy(band = 0.4, bimodal = bimodal))) {
     expect_identical(b$anyon, computed(b))
     expect_identical(any_on(b, "g5", c("C", "A")), computed(b, "g5", c("C", "A")))
     sub <- restrict_clusters(b, c("A", "C"))
     expect_identical(sub$anyon, computed(sub))
   }
-  # g5 is ambiguous (0.5 at margin 0.1) only in s1 A
-  expect_identical(toy(margin = 0.1)$anyon["g5", ], c(A = TRUE, B = FALSE, C = FALSE))
+  # g5 is ambiguous (0.5 at band 0.4) only in s1 A
+  expect_identical(toy(band = 0.4)$anyon["g5", ], c(A = TRUE, B = FALSE, C = FALSE))
 })
 
 test_that("can_rank keeps every value tied with the limit-th smallest", {
@@ -215,4 +215,15 @@ test_that("can_rank keeps every value tied with the limit-th smallest", {
   b <- toy()
   expect_identical(pair_offtargets(b, "A", character(0), 1, limit = 1),
     head(pair_offtargets(b, "A", character(0), 1, limit = 50), 1))
+})
+
+test_that("the deprecated margin gives the same calls as band = 0.5 - margin", {
+  obs <- data.frame(split = c("s1", "s1"), cluster = c("A", "B"))
+  prob <- matrix(c(0.95, 0.5, 0.05, 0.85), 2, dimnames = list(NULL, c("g1", "g2")))
+  b1 <- binarize(prob, obs$split, obs$cluster, "s1", c("A", "B"), band = 0.4)
+  expect_warning(b2 <- binarize(prob, obs$split, obs$cluster, "s1", c("A", "B"), margin = 0.1),
+                 "`margin` is deprecated")
+  expect_identical(b2, b1)
+  expect_error(suppressWarnings(binarize(prob, obs$split, obs$cluster, "s1", c("A", "B"),
+                                         band = 0.4, margin = 0.1)), "not both")
 })

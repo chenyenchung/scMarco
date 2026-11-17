@@ -130,11 +130,11 @@ scmarco_app <- function(config = Sys.getenv("SCMARCO_CONFIG", "config.yaml"),
                     multiple = TRUE
                 ),
                 sliderInput(
-                    "margin", "Confidence margin (%)",
-                    min = 1, max = 50, step = 1, value = 10
+                    "band", "Ambiguity band (%)",
+                    min = 0, max = 49, step = 1, value = 30
                 ),
                 helpText(
-                    "ON if P(On) \u2265 100% \u2212 margin, OFF if P(On) \u2264 margin;",
+                    "ON if P(On) \u2265 50% + band, OFF if P(On) \u2264 50% \u2212 band;",
                     "in between is ambiguous (gray) and never counts as ON or OFF."
                 ),
                 uiOutput("splits_selector"),
@@ -209,9 +209,9 @@ scmarco_server <- function(input, output, session, config) {
     # Dropdown choices for views that also show unimodal genes, labeled as such
     all_gene_choices <- reactive(gene_choices(ds(), all_genes()))
 
-    # Debounced: each distinct margin is a full binarize, so don't run one per
+    # Debounced: each distinct band is a full binarize, so don't run one per
     # intermediate slider position
-    margin <- debounce(reactive(input$margin / 100), 500)
+    band <- debounce(reactive(input$band / 100), 500)
 
     # Cluster metadata: the user picks which levels (config subset_by) to subset
     # by, and each picked level shows its own filter. Levels cascade coarse to
@@ -293,7 +293,7 @@ scmarco_server <- function(input, output, session, config) {
         sprintf("%d of %d clusters searched.", length(universe()), length(ds()$clusters))
     })
 
-    b <- reactive(restrict_clusters(ds_binarize(ds(), margin()), universe()))
+    b <- reactive(restrict_clusters(ds_binarize(ds(), band()), universe()))
 
     # The cluster picker lists the clusters in scope; a new dataset starts empty
     shown_ds <- NULL
@@ -370,7 +370,7 @@ scmarco_server <- function(input, output, session, config) {
         idents = reactive(input$clusters_of_interest),
         required = required,
         min_n = min_n,
-        margin = margin,
+        band = band,
         split_label = reactive(ds()$split_label),
         split_plural = reactive(ds()$split_plural),
         scope = reactive(describe_scope(ds(), meta_filters())),

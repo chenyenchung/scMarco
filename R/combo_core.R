@@ -3,12 +3,12 @@
 # Pure functions (no Shiny, no I/O) shared by every tab. They operate on a
 # "binarized dataset" produced by binarize():
 #
-#   on[gene, cluster, split]  logical  confidently ON: prob >= 1 - margin
+#   on[gene, cluster, split]  logical  confidently ON: prob >= 0.5 + band
 #                                      (FALSE when the cluster is absent from
 #                                      the split or the gene is non-bimodal in
 #                                      that split)
 #   ambiguous[gene, cluster, split]
-#                             logical  margin < prob < 1 - margin: neither
+#                             logical  0.5 - band < prob < 0.5 + band: neither
 #                                      confidently ON nor confidently OFF
 #   present[cluster, split]   logical  the cluster exists in the split
 #   bimodal[gene, split]      logical  the mixture model called the gene bimodal
@@ -28,7 +28,8 @@
 #' from a dataset and caches the result.
 #'
 #' A gene is ON in a cluster and split when its probability is at least
-#' `1 - margin`, OFF when it is at most `margin`, and ambiguous in between.
+#' `0.5 + band`, OFF when it is at most `0.5 - band`, and ambiguous in
+#' between (the ambiguity band).
 #' Ambiguous calls never count as ON, but they do count as off-target
 #' expression. A gene the mixture model did not call bimodal in a split is
 #' neither ON nor ambiguous there.
@@ -38,8 +39,9 @@
 #' @param obs_split,obs_cluster Character vectors: the split and cluster of
 #'   each row of `prob`.
 #' @param splits,clusters The full, ordered sets of splits and clusters.
-#' @param margin Confidence margin in (0, 0.5]. At 0.5 there is no ambiguous
-#'   band and ON is `prob > 0.5`.
+#' @param band Half-width of the ambiguity band around P(On) = 0.5, in
+#'   \[0, 0.5). At 0 there is no ambiguous band and ON is `prob > 0.5`.
+#'   The default elsewhere in scMarco is 0.3 (ON at 0.8, OFF at 0.2).
 #' @param bimodal Optional logical matrix, genes x splits: whether the
 #'   mixture model called the gene bimodal in that split.
 #'
@@ -47,22 +49,24 @@
 #'   arrays `on` and `ambiguous` (genes x clusters x splits), the logical
 #'   matrices `present` (clusters x splits), `bimodal` (genes x splits) and
 #'   `anyon` (genes x clusters: ON or ambiguous in any split, see [any_on()]),
-#'   and `genes`, `clusters`, `splits` and `margin`.
+#'   and `genes`, `clusters`, `splits` and `band`.
+#' @param margin Deprecated: the former confidence margin, `0.5 - band`.
 #' @examples
 #' prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,
 #'     dimnames = list(NULL, c("geneA", "geneB")))
 #' b <- binarize(prob, obs_split = c("adult", "adult"),
 #'     obs_cluster = c("c1", "c2"), splits = "adult",
-#'     clusters = c("c1", "c2"), margin = 0.1)
+#'     clusters = c("c1", "c2"), band = 0.4)
 #' b$on[, , "adult"]
 #' b$ambiguous[, , "adult"]
 #' @export
 binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
-                     margin, bimodal = NULL) {
+                     band, bimodal = NULL, margin = NULL) {
+    band <- band_from_margin(if (missing(band)) NULL else band, margin)
     stopifnot(
         nrow(prob) == length(obs_split),
         length(obs_split) == length(obs_cluster),
-        margin > 0, margin <= 0.5
+        band >= 0, band < 0.5
     )
     genes <- colnames(prob)
     present <- matrix(
@@ -79,8 +83,8 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
 
     # tolerance so slider steps such as 1 - 0.3 land on 0.7
     eps <- 1e-9
-    off <- is.na(prob) | prob <= margin + eps
-    hit <- !off & prob >= 1 - margin - eps
+    off <- is.na(prob) | prob <= 0.5 - band + eps
+    hit <- !off & prob >= 0.5 + band - eps
     unsure <- !off & !hit
 
     # Fill genes x (clusters * splits) matrices, whose column (si - 1) *
@@ -112,10 +116,22 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
         list(
             on = on, ambiguous = ambiguous, present = present, bimodal = bimodal,
             anyon = anyon_matrix(on, ambiguous),
-            genes = genes, clusters = clusters, splits = splits, margin = margin
+            genes = genes, clusters = clusters, splits = splits, band = band
         ),
         class = "scmarco_binarized"
     )
+}
+
+band_from_margin <- function(band, margin) {
+    # `margin` (the former confidence margin) is deprecated: band = 0.5 - margin.
+    # band: NULL when the caller did not give it
+    if (!is.null(margin)) {
+        if (!is.null(band)) stop("give band or margin, not both", call. = FALSE)
+        warning("`margin` is deprecated; use `band = 0.5 - margin` (here ", 0.5 - margin, ")",
+            call. = FALSE)
+        return(0.5 - margin)
+    }
+    band
 }
 
 #' Limit a binarized dataset to some clusters
@@ -130,7 +146,7 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' sub <- restrict_clusters(b, b$clusters[1:20])
 #' length(sub$clusters)
 #' @export
@@ -184,7 +200,7 @@ pass_matrix <- function(b, required, min_n, clusters = b$clusters,
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' any_on(b, genes = b$genes[1:3], clusters = b$clusters[1:4])
 #' @export
 any_on <- function(b, genes = b$genes, clusters = b$clusters) {
@@ -251,7 +267,7 @@ offtarget_counts <- function(b, genes, exclude) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' from_cluster(b, ident = b$clusters[1], required = character(0), min_n = 1)
 #' @export
 from_cluster <- function(b, ident, required, min_n, limit = 10,
@@ -278,7 +294,7 @@ from_cluster <- function(b, ident, required, min_n, limit = 10,
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' clusters_expressing(b, b$genes[1:2], required = character(0), min_n = 1,
 #'     mode = "any")
 #' @export
@@ -319,7 +335,7 @@ clusters_expressing <- function(b, genes, required, min_n,
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' hits <- distinct_within(b, b$clusters[1:3], required = character(0),
 #'     min_n = 1)
 #' head(hits)
@@ -404,7 +420,7 @@ empty_pairs <- function() {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' pair_offtargets(b, ident = b$clusters[1], required = character(0),
 #'     min_n = 1, limit = 5)
 #' @export
@@ -466,7 +482,7 @@ can_rank <- function(vals, limit) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' combo_offtarget_clusters(b, b$genes[1:2])
 #' @export
 combo_offtarget_clusters <- function(b, genes, exclude = character(0)) {
@@ -490,7 +506,7 @@ combo_offtarget_clusters <- function(b, genes, exclude = character(0)) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, margin = 0.1)
+#' b <- ds_binarize(ds, band = 0.4)
 #' head(state_table(b, b$genes[1], clusters = b$clusters[1:2]))
 #' @export
 state_table <- function(b, genes, clusters = b$clusters) {

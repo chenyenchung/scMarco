@@ -10,11 +10,12 @@
 #' @param clusters Path of the `.clusters.h5ad` file.
 #' @param out Optional path: also write the table there as CSV (empty
 #'   `cluster_name` = unnamed).
-#' @param cut Probability above which a gene is ON (the confidence margin of
-#'   [ds_binarize()]).
+#' @param band Ambiguity band of [ds_binarize()]; the default 0 calls a gene
+#'   ON above P(On) = 0.5 with no ambiguous band.
 #' @param required,min_n Both genes must be ON in every `required` split and
 #'   in at least `min_n` splits.
 #' @param top Maximum number of pairs per cluster.
+#' @param cut Deprecated: the former confidence margin, `0.5 - band`.
 #' @param cores Number of clusters ranked at once, in forked processes
 #'   ([parallel::mclapply()]); one on Windows, which cannot fork. The result
 #'   does not depend on it.
@@ -28,10 +29,15 @@
 #' pairs <- find_pairs(ex, top = 3)
 #' head(pairs)
 #' @export
-find_pairs <- function(clusters, out = NULL, cut = 0.5, required = character(0),
-                       min_n = 1, top = 20, cores = 1) {
+find_pairs <- function(clusters, out = NULL, band = 0, required = character(0),
+                       min_n = 1, top = 20, cores = 1, cut = NULL) {
+    if (!is.null(cut)) {
+        warning("`cut` is deprecated; use `band = 0.5 - cut` (here ", 0.5 - cut, ")",
+            call. = FALSE)
+        band <- 0.5 - cut
+    }
     ds <- ds_load("find_pairs", list(label = "find_pairs", clusters = clusters))
-    b <- ds_binarize(ds, cut)
+    b <- ds_binarize(ds, band)
     rank_cluster <- function(cl) {
         res <- pair_offtargets(b, cl, required, as.integer(min_n),
             limit = as.integer(top), genes = ds$analysis_genes)
