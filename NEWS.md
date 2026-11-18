@@ -53,6 +53,11 @@
   made a call ambiguous, a worst leak of 1 or less shows as noise, the
   ranking columns appear only for datasets that have the data, and the
   sidebar says whether the dataset's call checks are applied.
+* `qc_report()` reports on one split's binarization (QC report version 1): a
+  YAML file with stable keys for comparing runs and a self-contained HTML
+  page with the dataset, the settings in use (with what each is), the genes
+  binarized and why the others were not, chain agreement, the detection and
+  ambient checks, the calls, known limitations and provenance.
 * New synthetic example dataset `toy` (inst/extdata) with a cells file,
   reduction, cluster names and metadata, and mixture-model fits.
 * Fixed: a config without `gene_list` no longer fails to build the UI.
