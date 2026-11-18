@@ -46,7 +46,6 @@ Suggests:
     DBI,
     knitr,
     matrixStats,
-    mclust,
     rmarkdown,
     rstan,
     RSQLite,

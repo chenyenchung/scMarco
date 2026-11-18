@@ -193,7 +193,7 @@ UMAP split by sex.
 One probability per gene × split × cluster: the posterior that the gene is
 in the "ON" component of the mixture model, plus whether each gene is bimodal.
 
-The binarizer ships with the package (Suggests: rstan, mclust, matrixStats).
+The binarizer ships with the package (Suggests: rstan, matrixStats).
 Per split, `fit_mixture()` fits each gene's log-normalized expression across
 pseudobulk samples (each cluster's cells pooled into a few replicates) and
 `call_mixture()` turns the fits into the table described in 2a. Fit chunks of
@@ -202,8 +202,19 @@ seeded per gene (`seed = 42`), so they do not depend on the chunking:
 
 ```r
 fit <- fit_mixture(lognorm, cluster = meta$cluster, replicate = meta$replicate)
-add_probability("data/<id>.clusters.h5ad", list(Male = call_mixture(fit), ...))
+amb <- ambient_summary(counts, cluster = meta_cells$cluster, library = meta_cells$library)
+add_probability("data/<id>.clusters.h5ad", list(Male = call_mixture(fit, amb), ...))
 ```
+
+`call_mixture()` binarizes a gene when its bimodal fit beats the unimodal one
+at a false discovery rate of 10% (Benjamini-Hochberg on the elpd z), its
+Ashman's D is at least 2 and its chains agree on at least 90% of clusters;
+other genes get no calls. Each cluster's P(On) is the posterior mean, and
+flags mark calls to treat as ambiguous: chains that disagree, ON with fewer
+than 5% of the cluster's cells detecting the gene, OFF with UMIs above 8x the
+ambient RNA expected (DecontX contamination per library, from
+`ambient_summary()` on the split's raw counts and cell labels). Every cut is
+an argument, and the values in use are printed.
 
 `make_pseudobulk()` makes the input from one split's raw counts, as
 `Seurat::AggregateExpression(return.seurat = TRUE)` did in the pipeline: each
@@ -239,9 +250,10 @@ is used as is: a `data.frame` (`.rds`) with
 - genes as row names;
 - one probability column per **cluster ID** of that split (e.g. `151`,
   `ANm_12`): a number in [0, 1], or NA;
-- the QC columns `diff.elpd`, `diff.elpd.se`, `bimodal.on_level`,
+- the QC columns `diff.elpd`, `diff.elpd.se`, `elpd.z`, `elpd.q`,
+  `ashman.D`, `ashman.D.lower`, `spread.share`, `bimodal.on_level`,
   `bimodal.off_level`, `bimodal.sd`, `bimodal.pi`, `unimodal.level`,
-  `unimodal.sd` and `exprType`. Only `exprType` is required. A gene is
+  `unimodal.sd`, `exprType` and `not.binarized`. Only `exprType` is required. A gene is
   bimodal **in this split** when its `exprType` is `"bimodal"`.
 
 The model's raw output, a character matrix (every column is text because of
@@ -348,7 +360,7 @@ Every object passed from fitting to the app records two versions:
 | Version | Where | Meaning |
 |---|---|---|
 | scMarco schema (`2.0`) | `uns/scmarco/format_version` of both h5ad files; `schema_version` of a `fit_mixture()` object | the layout of the object. v1 was the legacy SQLite database (convert it with `sqlite_to_h5ad()`); v2 is still being consolidated, so fields it requires are added without a bump until it is released |
-| binarizer (`1.0`) | `binarizer_version` of a `fit_mixture()` object; attribute `scmarco_binarizer` of a `call_mixture()` table; `uns/scmarco/binarization/version` | the binarizer (`fit_mixture()` + `call_mixture()`) that made the probabilities; bumped when a change alters them. `"external"`: tables from outside scMarco's binarizer (mixture_modeling_smk pipeline, hand-made, migrated legacy databases) |
+| binarizer (`1.1`) | `binarizer_version` of a `fit_mixture()` object; attribute `scmarco_binarizer` of a `call_mixture()` table; `uns/scmarco/binarization/version` | the binarizer (`fit_mixture()` + `call_mixture()`) that made the probabilities; bumped when a change alters them. `"external"`: tables from outside scMarco's binarizer (mixture_modeling_smk pipeline, hand-made, migrated legacy databases) |
 
 | Step | Checks |
 |---|---|
@@ -358,8 +370,9 @@ Every object passed from fitting to the app records two versions:
 | `validate_h5ad()` | binarized files need `binarization` with `method`, `source`, `date` and a valid `version`; newer binarizer is an error, older a warning; the cells file's `format_version` must match |
 | app (`ds_check_config()`, `ds_load()`) | refuses another `format_version` (either file), a missing, invalid or newer binarizer version; warns on an older one; shows the binarizer in the sidebar |
 
-A `call_mixture()` table keeps its binarizer attribute through `saveRDS()`,
-but not through subsetting; a subset table counts as `"external"`. Files
+A `call_mixture()` table keeps its attributes (binarizer, flags, folds,
+parameters) through `saveRDS()` and through selecting genes (rows), but not
+through selecting columns; a table without them counts as `"external"`. Files
 binarized before the version was required can be given the record (as
 `"external"`) with `deploy/misc/stamp_binarizer_version.R`.
 

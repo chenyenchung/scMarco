@@ -3,8 +3,9 @@
 # Used by seurat_to_h5ad() and add_probability() in lib_build.R; see
 # docs/expected_input.md for the formats and rules.
 
-QC_COLS <- c("diff.elpd", "diff.elpd.se", "bimodal.on_level", "bimodal.off_level",
-    "bimodal.sd", "bimodal.pi", "unimodal.level", "unimodal.sd", "exprType")
+QC_COLS <- c("diff.elpd", "diff.elpd.se", "elpd.z", "elpd.q", "ashman.D", "ashman.D.lower",
+    "spread.share", "bimodal.on_level", "bimodal.off_level", "bimodal.sd", "bimodal.pi",
+    "unimodal.level", "unimodal.sd", "exprType", "not.binarized")
 
 # Mixture-model fit parameters kept per gene x split (varm/mixture_<name>):
 # the two Gaussian component means, their shared SD and the ON weight

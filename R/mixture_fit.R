@@ -17,8 +17,12 @@
 # Binarizer 1.1 changes the fit (specification in the scMarco_test design
 # record): a per-gene prior on the component means instead of normal(7, 5),
 # 8 chains for the full bimodal fit, and the parameter draws, posterior mean
-# P(On) and chain spread kept per gene. Binarizer 1.0 is the original
-# implementation (equal to mm_marker within seed noise).
+# P(On) and chain spread kept per gene; and the calls (call_mixture()):
+# binarized genes chosen by false discovery rate, Ashman's D and chain
+# agreement, the posterior mean P(On), and flags for chains that disagree, a
+# detection floor and ambient RNA, instead of the global ON/OFF distributions
+# for genes without bimodality. Binarizer 1.0 is the original implementation
+# (equal to mm_marker within seed noise).
 #
 # Copyright (c) 2018-2020 Fred P. Davis (original opticlobe code)
 # Copyright (c) 2023-2026 Yen-Chung Chen (this adaptation)
@@ -36,11 +40,13 @@ MIXTURE_ADAPT_DELTA <- 0.98
 MIXTURE_CHAINS_BIMODAL <- 8
 MIXTURE_PRIOR_SD_DIV <- 3
 MIXTURE_PRIOR_SD_FLOOR <- 0.01
-# Bimodal genes' samples with P(On) above / below these define the global
-# ON / OFF expression distributions that genes without bimodality are
-# compared with
-MIXTURE_SURE_ON <- 0.9
-MIXTURE_SURE_OFF <- 0.1
+# Binarizer 1.1 flags of a call (call_mixture(), attribute "flags"; summed
+# per gene x cluster), each making the call ambiguous in binarize(): the
+# bimodal fit's chains disagree on the cluster; too few of the cluster's cells
+# detect the gene for ON; its UMIs are too far above ambient RNA for OFF
+CALL_FLAG_CHAINS <- 1L
+CALL_FLAG_DETECTION <- 2L
+CALL_FLAG_AMBIENT <- 4L
 
 # A fit whose Stan run has a parameter with Rhat above MIXTURE_MAX_RHAT or an
 # effective sample size below MIXTURE_MIN_N_EFF is reported as not converged
@@ -307,8 +313,8 @@ fit_gene <- function(x, cluster_idx, replicate_idx, labels, n_folds, n_iter, cor
 #' Fits the log-normalized expression of each gene across pseudobulk samples
 #' of one split twice with Stan: as a mixture of an OFF and an ON Gaussian
 #' with a shared SD, and as a single Gaussian. Each fit is scored by k-fold
-#' cross-validation. [call_mixture()] then calls bimodal genes and each
-#' cluster's probability of expression. This is scMarco's binarizer, adapted
+#' cross-validation. [call_mixture()] then decides which genes are binarized
+#' and calls each cluster's probability of expression. This is scMarco's binarizer, adapted
 #' from Fred P. Davis's mixture model and code for Davis et al. (2020)
 #' (<https://github.com/fredpdavis/opticlobe>), with the elpd fix of
 #' <https://github.com/fredpdavis/opticlobe/pull/1>.
@@ -601,98 +607,272 @@ merge_mixture_fits <- function(...) {
 #' Call expression from mixture-model fits
 #'
 #' Turns the fits of [fit_mixture()] into one split's probability table for
-#' [add_probability()]. A gene is bimodal when its bimodal fit beats the
-#' unimodal one by more than two standard errors of the elpd difference; its
-#' probability of expression in a cluster is then the bimodal model's. For
-#' the other genes, expression in all of the split's samples is compared
-#' with the ON and OFF distributions pooled from the bimodal genes (samples
-#' with P(On) > 0.9 and < 0.1), which gives one probability for every
-#' cluster. Needs at least one bimodal gene. Genes whose fit did not converge
-#' (see [fit_mixture()]) are named in a warning; their calls are kept.
+#' [add_probability()] (binarizer 1.1). It decides which genes are binarized,
+#' gives each cluster of those genes its probability of expression, and flags
+#' the clusters whose call is not to be trusted. Every cut is a parameter;
+#' the values in use are printed and recorded with the table.
 #'
-#' @param fit Fits from [fit_mixture()] or [merge_mixture_fits()], of
-#'   every gene of the split (the pooled distributions use them all).
+#' **Binarized genes.** A gene is binarized when all of these hold:
+#' - its bimodal fit beats the unimodal one: z = elpd difference / its SE,
+#'   one-sided normal p, Benjamini-Hochberg over the split's genes, q <
+#'   `bh_q`;
+#' - its ON and OFF states are apart: Ashman's D, (ON level - OFF level) /
+#'   within-state SD (posterior median over draws), is at least `min_D`;
+#' - its chains agree: fewer than `reject_spread_frac` of its clusters have a
+#'   chain spread above `spread_cutoff` (the spread is the max - min of the
+#'   bimodal fit's chain means of P(On)).
 #'
-#' @return A data.frame, genes x clusters probabilities of expression
-#'   (rounded to 2 decimals), followed by `diff.elpd`, `diff.elpd.se`
-#'   (rounded), the bimodal fit's `bimodal.on_level`, `bimodal.off_level`,
-#'   `bimodal.sd` and `bimodal.pi` (posterior medians, unrounded so that the
-#'   mixture-model plot is exact), `unimodal.level`, `unimodal.sd` (rounded)
-#'   and `exprType` (`"bimodal"` or `"unimodal"`). Its attribute
-#'   `scmarco_binarizer` holds the binarizer version, which
-#'   [add_probability()] records in the dataset; it survives [saveRDS()],
-#'   but not subsetting, after which the table counts as external.
-#' @seealso [fit_mixture()], [add_probability()].
+#' Genes that are not binarized get no calls (`NA`), only their expression
+#' level; there is no dataset-wide ON/OFF scale.
+#'
+#' **Calls.** P(On) of a cluster is the posterior mean over draws
+#' (`summary = "mean"`); `"median"` gives binarizer 1.0's posterior median,
+#' which picks a side at random for broad genes. The ambiguity band (ON
+#' above 0.5 + band, OFF below 0.5 - band) is applied when the dataset is
+#' read ([binarize()], the app's band slider). On top of it, these flags make
+#' a call ambiguous (attribute `flags`, one integer per gene x cluster, the
+#' sum of):
+#' - 1, chains disagree: the cluster's chain spread is above `spread_cutoff`;
+#' - 2, below the detection floor: fewer than `on_floor` of the cluster's
+#'   cells have a UMI of the gene, so it cannot be ON;
+#' - 4, above ambient: the cluster's UMIs of the gene exceed
+#'   `2^ambient_log2fc` times the ambient RNA expected in it (Poisson
+#'   P(X >= observed) < `ambient_alpha`), so it cannot be OFF. The offset is
+#'   deliberately maximally permissive: only clear expression is caught;
+#'   smaller excesses are left to the ranking of the pair search.
+#'
+#' Flags 2 and 4 need `ambient`, the per-cluster counts and ambient-RNA
+#' estimate of [ambient_summary()]; without it those checks are skipped, with
+#' a message.
+#'
+#' @param fit Fits from [fit_mixture()] or [merge_mixture_fits()], of every
+#'   gene of the split (the false discovery rate is controlled over them).
+#' @param ambient [ambient_summary()] of the same split's cells, with every
+#'   fitted gene and cluster, or `NULL` to skip the detection floor and the
+#'   ambient check.
+#' @param bh_q False discovery rate (Benjamini-Hochberg) at which a gene's
+#'   bimodal fit counts as better than its unimodal one.
+#' @param min_D Smallest Ashman's D of a binarized gene.
+#' @param spread_cutoff Chain spread of P(On) above which a cluster's call is
+#'   ambiguous.
+#' @param reject_spread_frac Share of a gene's clusters above `spread_cutoff`
+#'   at which the gene is not binarized.
+#' @param summary Summary of each cluster's P(On) over the posterior:
+#'   `"mean"` or `"median"`.
+#' @param on_floor Smallest share of a cluster's cells detecting the gene
+#'   (at least one UMI) for an ON call.
+#' @param ambient_log2fc Offset of the ambient check, in log2 fold over the
+#'   expected ambient UMIs.
+#' @param ambient_alpha Level of the ambient check.
+#'
+#' @return A data.frame, genes x clusters P(On) (rounded to 2 decimals; `NA`
+#'   for genes not binarized), followed by `diff.elpd`, `diff.elpd.se`,
+#'   `elpd.z`, `elpd.q` (BH), `ashman.D` (posterior median) and
+#'   `ashman.D.lower` (10th percentile), `spread.share` (share of clusters
+#'   above `spread_cutoff`), the bimodal fit's `bimodal.on_level`,
+#'   `bimodal.off_level`, `bimodal.sd` and `bimodal.pi` (posterior medians,
+#'   unrounded so that the mixture-model plot is exact), `unimodal.level`,
+#'   `unimodal.sd`, `exprType` (`"bimodal"` for binarized genes, otherwise
+#'   `"unimodal"`) and `not.binarized` (why: `"elpd"`, `"ashman_D"` or
+#'   `"chains"`; `NA` for binarized genes). Attributes: `flags` (genes x
+#'   clusters integers, see Details), `fold_ambient` (genes x clusters log2
+#'   fold of the UMIs over the expected ambient UMIs, log2((observed + 1) /
+#'   (expected + 1)), used to rank pairs; `NA` without `ambient`),
+#'   `binarization` (the parameters in use and the contamination per
+#'   library) and `scmarco_binarizer` (the binarizer version, which
+#'   [add_probability()] records in the dataset). The attributes survive
+#'   [saveRDS()] and selecting genes (rows), but not selecting columns,
+#'   after which the table counts as external.
+#'
+#'   Fits of binarizer 1.0 (no draws) are called with the median summary,
+#'   Ashman's D from the posterior medians and no chain-spread rules.
+#' @seealso [fit_mixture()], [ambient_summary()], [add_probability()].
 #' @references Davis FP, Nern A, Picard S, et al. (2020). A genetic, genomic,
 #'   and computational resource for exploring neural circuit function. eLife
 #'   9:e50901. Code: <https://github.com/fredpdavis/opticlobe>.
+#'
+#'   Benjamini Y, Hochberg Y (1995). Controlling the false discovery rate: a
+#'   practical and powerful approach to multiple testing. Journal of the
+#'   Royal Statistical Society B 57:289-300.
+#'
+#'   Ashman KM, Bird CM, Zepf SE (1994). Detecting bimodality in
+#'   astronomical datasets. The Astronomical Journal 108:2348-2361.
 #' @examples
 #' \dontrun{
-#' tables <- list(Male = call_mixture(male_fit), Female = call_mixture(female_fit))
+#' # one split's raw counts, every gene
+#' male_amb <- ambient_summary(male_counts, cluster = male$scmarco_cluster,
+#'     library = male$orig.ident)
+#' tables <- list(Male = call_mixture(male_fit, male_amb),
+#'     Female = call_mixture(female_fit, female_amb))
 #' add_probability("data/mydata.clusters.h5ad", tables)
 #' }
 #' @export
-call_mixture <- function(fit) {
-    need_packages(c("mclust", "matrixStats"), "call_mixture()")
+call_mixture <- function(fit, ambient = NULL, bh_q = 0.10, min_D = 2, spread_cutoff = 0.5,
+                         reject_spread_frac = 0.10, summary = c("mean", "median"),
+                         on_floor = 0.05, ambient_log2fc = 3, ambient_alpha = 1e-3) {
     check_mixture(fit)
+    summary <- match.arg(summary)
+    check_fraction <- function(x, name, open = TRUE) {
+        if (!is.numeric(x) || length(x) != 1 || is.na(x) || x < 0 || x > 1 ||
+            (open && (x == 0 || x == 1))) {
+            fail(name, " must be one number in ", if (open) "(0, 1)" else "[0, 1]")
+        }
+    }
+    check_fraction(bh_q, "bh_q")
+    check_fraction(spread_cutoff, "spread_cutoff", open = FALSE)
+    check_fraction(reject_spread_frac, "reject_spread_frac")
+    check_fraction(on_floor, "on_floor", open = FALSE)
+    check_fraction(ambient_alpha, "ambient_alpha")
+    for (a in c("min_D", "ambient_log2fc")) {
+        v <- get(a)
+        if (!is.numeric(v) || length(v) != 1 || is.na(v) || v < 0) {
+            fail(a, " must be one number of at least 0")
+        }
+    }
+    if (!is.null(ambient) && !inherits(ambient, "scmarco_ambient")) {
+        fail("ambient must come from ambient_summary()")
+    }
+
     genes <- names(fit$fits)
-    lognorm <- fit$lognorm[genes, , drop = FALSE]
     clusters <- unique(fit$cluster)
+    n_cl <- length(clusters)
     pick <- function(f) vapply(fit$fits, f, numeric(1))
+    by_cluster <- function(f) {
+        m <- matrix(unlist(lapply(fit$fits, f)), length(genes), n_cl, byrow = TRUE)
+        dimnames(m) <- list(genes, clusters)
+        m
+    }
+
+    # binarizer 1.0 fits keep no draws: median summary, D from the medians,
+    # no chain spread
+    v10 <- binarizer_status(fit$binarizer_version) == "older"
+    if (!v10) {
+        lacking <- genes[!vapply(fit$fits, function(g) {
+            all(c("draws", "p_on_mean", "chain_spread") %in% names(g$bimodal))
+        }, logical(1))]
+        if (length(lacking) > 0) {
+            fail("The bimodal fit of ", length(lacking), " gene(s) keeps no draws, ",
+                "posterior mean or chain spread: ", first_few(lacking),
+                "; refit them with fit_mixture()")
+        }
+    } else if (summary == "mean") {
+        message("Binarizer ", fit$binarizer_version, " fit: P(On) is the posterior ",
+            "median and there is no chain-spread check (the fit keeps no draws)")
+        summary <- "median"
+    }
+
+    # which genes are binarized
     diff <- pick(function(g) g$elpd$diff)
     diff_se <- pick(function(g) g$elpd$diff_se)
-    bimodal <- diff > 0 & diff > 2 * diff_se
-    p_on <- do.call(rbind, lapply(fit$fits, function(g) exp(g$bimodal$log_p_on_cluster)))
-    dimnames(p_on) <- list(genes, clusters)
-    message(sum(bimodal), " of ", length(genes), " genes are bimodal")
+    z <- ifelse(diff_se > 0, diff / diff_se, sign(diff) * Inf)
+    q <- stats::p.adjust(stats::pnorm(z, lower.tail = FALSE), method = "BH")
+    pass_elpd <- diff > 0 & q < bh_q
+    if (v10) {
+        D <- pick(function(g) (g$bimodal$on_level - g$bimodal$off_level) / g$bimodal$sd)
+        D_lower <- rep(NA_real_, length(genes))
+        spread <- matrix(NA_real_, length(genes), n_cl, dimnames = list(genes, clusters))
+    } else {
+        D_draws <- lapply(fit$fits, function(g) {
+            d <- matrix(g$bimodal$draws, ncol = 4)   # mu_on, mu_off, sd1, pi_on
+            (d[, 1] - d[, 2]) / d[, 3]
+        })
+        D <- vapply(D_draws, stats::median, numeric(1))
+        D_lower <- vapply(D_draws, stats::quantile, numeric(1), probs = 0.1, names = FALSE)
+        spread <- by_cluster(function(g) g$bimodal$chain_spread)
+    }
+    high_spread <- !is.na(spread) & spread > spread_cutoff
+    spread_share <- rowMeans(high_spread)
+    pass_D <- D >= min_D
+    pass_chains <- spread_share < reject_spread_frac
+    binarized <- pass_elpd & pass_D & pass_chains
+    reason <- ifelse(!pass_elpd, "elpd", ifelse(!pass_D, "ashman_D",
+        ifelse(!pass_chains, "chains", NA_character_)))
+
+    z_cut <- if (any(pass_elpd)) min(z[pass_elpd]) else NA_real_
+    message(sprintf("%d of %d genes are binarized:", sum(binarized), length(genes)))
+    message(sprintf(paste0("  %d beat the unimodal fit at a false discovery rate of %s ",
+        "(Benjamini-Hochberg; elpd z >= %s; set bh_q to change)"), sum(pass_elpd),
+        format(bh_q), if (is.na(z_cut)) "-" else sprintf("%.2f", z_cut)))
+    message(sprintf("  %d of them have Ashman's D below %s (set min_D to change)",
+        sum(pass_elpd & !pass_D), format(min_D)))
+    if (!v10) {
+        message(sprintf(paste0("  %d of them have chains that disagree (spread > %s) on ",
+            ">= %s%% of clusters (set spread_cutoff / reject_spread_frac to change)"),
+            sum(pass_elpd & pass_D & !pass_chains), format(spread_cutoff),
+            format(100 * reject_spread_frac)))
+    }
+    if (!any(binarized)) warning("No gene is binarized in this split", call. = FALSE)
     bad <- not_converged(fit)
     if (length(bad) > 0) {
         warning(convergence_note(bad, length(genes)), " Their calls are kept.", call. = FALSE)
     }
-    if (!any(bimodal)) fail("No bimodal gene to learn the ON and OFF distributions from")
 
-    # Global ON and OFF distributions: samples of bimodal genes whose cluster
-    # is surely ON or OFF, read gene by gene
-    bim_lognorm <- t(lognorm[bimodal, , drop = FALSE])
-    bim_p_on <- t(p_on[bimodal, fit$cluster, drop = FALSE])
-    normal_fit <- function(x) {
-        # what Mclust(x, G = 1) fits
-        f <- mclust::mvnX(x)$parameters
-        c(mean = unname(f$mean), sd = sqrt(f$variance$sigmasq))
+    # P(On) of each cluster and the flags
+    p_on <- if (summary == "mean") {
+        by_cluster(function(g) g$bimodal$p_on_mean)
+    } else {
+        exp(by_cluster(function(g) g$bimodal$log_p_on_cluster))
     }
-    on_e <- bim_lognorm[bim_p_on > MIXTURE_SURE_ON]
-    off_e <- bim_lognorm[bim_p_on < MIXTURE_SURE_OFF]
-    on <- normal_fit(on_e)
-    off <- normal_fit(off_e)
-    pi_on <- length(on_e) / (length(on_e) + length(off_e))
-    message(sprintf("Global ON: mean %.3f, SD %.3f; OFF: mean %.3f, SD %.3f; ON weight %.3f",
-        on[["mean"]], on[["sd"]], off[["mean"]], off[["sd"]], pi_on))
-
-    # P(On) of genes without bimodality: all samples ON vs all samples OFF
-    log_on <- numeric(length(genes))
-    log_off <- numeric(length(genes))
-    for (s in seq_len(ncol(lognorm))) {
-        log_on <- log_on + (log(pi_on) +
-            dnorm(lognorm[, s], mean = on[["mean"]], sd = on[["sd"]], log = TRUE))
-        log_off <- log_off + (log1p(-1 * pi_on) +
-            dnorm(lognorm[, s], mean = off[["mean"]], sd = off[["sd"]], log = TRUE))
+    p_on[!binarized, ] <- NA
+    flags <- matrix(0L, length(genes), n_cl, dimnames = list(genes, clusters))
+    flags[high_spread] <- CALL_FLAG_CHAINS
+    fold <- matrix(NA_real_, length(genes), n_cl, dimnames = list(genes, clusters))
+    if (is.null(ambient)) {
+        message("No ambient summary (ambient = ambient_summary(...)): the detection ",
+            "floor and the ambient check are skipped")
+    } else {
+        miss <- setdiff(genes, ambient$genes)
+        if (length(miss) > 0) fail("Gene(s) not in ambient: ", first_few(miss))
+        miss <- setdiff(clusters, ambient$clusters)
+        if (length(miss) > 0) fail("Cluster(s) not in ambient: ", first_few(miss))
+        obs <- ambient$umi[genes, clusters, drop = FALSE]
+        lambda <- ambient_expected(ambient, genes, clusters)
+        below <- ambient$detect[genes, clusters, drop = FALSE] < on_floor
+        above <- stats::ppois(obs - 1, 2^ambient_log2fc * lambda, lower.tail = FALSE) <
+            ambient_alpha
+        flags[below] <- flags[below] + CALL_FLAG_DETECTION
+        flags[above] <- flags[above] + CALL_FLAG_AMBIENT
+        fold <- round(log2((obs + 1) / (lambda + 1)), 3)
+        message(sprintf(paste0("Detection floor: ON needs >= %s%% of a cluster's cells ",
+            "detecting the gene (set on_floor to change); %d cluster(s) of binarized ",
+            "genes are below it"), format(100 * on_floor), sum(below[binarized, ])))
+        message(sprintf(paste0("Ambient check: OFF needs UMIs consistent with ambient RNA, ",
+            "i.e. not above %s x the expected ambient UMIs at P < %s (set ambient_log2fc / ",
+            "ambient_alpha to change); %d cluster(s) of binarized genes are above it"),
+            format(2^ambient_log2fc), format(ambient_alpha), sum(above[binarized, ])))
+        message("Contamination per library (", ambient$rho_source, "): ",
+            paste(sprintf("%s %.3f", names(ambient$rho), ambient$rho), collapse = ", "))
     }
-    log_p_unimodal <- log_on - vapply(seq_along(genes), function(i) {
-        matrixStats::logSumExp(c(log_off[i], log_on[i]))
-    }, numeric(1))
-    p_on[!bimodal, ] <- exp(log_p_unimodal[!bimodal])
+    message(sprintf(paste0("P(On) is the posterior %s; %d cluster(s) of binarized genes have ",
+        "chains that disagree (spread > %s). The ambiguity band is applied when the ",
+        "dataset is read (binarize(), the app)."), summary,
+        sum(high_spread[binarized, , drop = FALSE]), format(spread_cutoff)))
 
     round2 <- function(x) round(x, digits = 2)
     out <- data.frame(round2(p_on), check.names = FALSE)
     out$diff.elpd <- round2(diff)
     out$diff.elpd.se <- round2(diff_se)
+    out$elpd.z <- round(z, 3)
+    out$elpd.q <- signif(q, 3)
+    out$ashman.D <- round(D, 3)
+    out$ashman.D.lower <- round(D_lower, 3)
+    out$spread.share <- round(spread_share, 3)
     out$bimodal.on_level <- pick(function(g) g$bimodal$on_level)
     out$bimodal.off_level <- pick(function(g) g$bimodal$off_level)
     out$bimodal.sd <- pick(function(g) g$bimodal$sd)
     out$bimodal.pi <- pick(function(g) g$bimodal$pi)
     out$unimodal.level <- round2(pick(function(g) g$unimodal$level))
     out$unimodal.sd <- round2(pick(function(g) g$unimodal$sd))
-    out$exprType <- ifelse(bimodal, "bimodal", "unimodal")
+    out$exprType <- ifelse(binarized, "bimodal", "unimodal")
+    out$not.binarized <- reason
+    attr(out, "flags") <- flags
+    attr(out, "fold_ambient") <- fold
+    attr(out, "binarization") <- list(summary = summary, bh_q = bh_q, min_D = min_D,
+        spread_cutoff = spread_cutoff, reject_spread_frac = reject_spread_frac,
+        on_floor = on_floor, ambient_log2fc = ambient_log2fc, ambient_alpha = ambient_alpha,
+        ambient = !is.null(ambient),
+        rho = if (!is.null(ambient)) as.list(ambient$rho),
+        rho_source = if (!is.null(ambient)) ambient$rho_source)
     attr(out, "scmarco_binarizer") <- fit$binarizer_version
     out
 }

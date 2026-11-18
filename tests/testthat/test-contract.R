@@ -79,12 +79,9 @@ test_that("merged fits must share their settings", {
 })
 
 test_that("call_mixture tags its table with the binarizer version", {
-  skip_if_not_installed("mclust")
-  skip_if_not_installed("matrixStats")
   fit <- new_mixture(
-    list(geneA = list(bimodal = list(log_p_on_cluster = log(c(0.99, 0.01)), on_level = 2,
-                                     off_level = 0, sd = 0.1, pi = 0.5),
-                      unimodal = list(level = 1, sd = 1), elpd = list(diff = 9, diff_se = 1))),
+    list(geneA = fake_gene_fit(log(c(0.99, 0.01)), diff = 9, diff_se = 1, on_level = 2,
+                               off_level = 0, sd = 0.1, pi = 0.5)),
     rbind(geneA = c(s1 = 2, s2 = 0.1, s3 = 2.1, s4 = 0.2)), rep(c("1", "2"), 2),
     rep(c("1", "2"), each = 2),
     settings = list(n_iter = 500, n_folds = 10, seed = 42, cores = 1))

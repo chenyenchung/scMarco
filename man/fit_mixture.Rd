@@ -69,8 +69,8 @@ refit, and fits of different binarizers are never merged.
 Fits the log-normalized expression of each gene across pseudobulk samples
 of one split twice with Stan: as a mixture of an OFF and an ON Gaussian
 with a shared SD, and as a single Gaussian. Each fit is scored by k-fold
-cross-validation. \code{\link[=call_mixture]{call_mixture()}} then calls bimodal genes and each
-cluster's probability of expression. This is scMarco's binarizer, adapted
+cross-validation. \code{\link[=call_mixture]{call_mixture()}} then decides which genes are binarized
+and calls each cluster's probability of expression. This is scMarco's binarizer, adapted
 from Fred P. Davis's mixture model and code for Davis et al. (2020)
 (\url{https://github.com/fredpdavis/opticlobe}), with the elpd fix of
 \url{https://github.com/fredpdavis/opticlobe/pull/1}.

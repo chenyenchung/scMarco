@@ -1,15 +1,6 @@
-fake_gene_fit <- function(log_p_on, diff, diff_se, on_level = 1.23456789) {
-  #' One gene's fit as fit_mixture() returns it, without running Stan
-  list(
-    bimodal = list(log_p_on_cluster = log_p_on, on_level = on_level,
-                   off_level = 0.0123456, sd = 0.00312, pi = 0.987654),
-    unimodal = list(level = 0.456, sd = 0.789),
-    elpd = list(diff = diff, diff_se = diff_se)
-  )
-}
-
 fake_mixture <- function() {
-  #' Three clusters x two replicates; geneA and geneB bimodal, geneC not
+  #' Three clusters x two replicates; geneA and geneB binarized, geneC's
+  #' bimodal fit is no better than its unimodal one
   set.seed(1)
   cluster <- rep(c("1", "2", "10"), 2)
   lognorm <- rbind(
@@ -21,7 +12,7 @@ fake_mixture <- function() {
   fits <- list(
     geneA = fake_gene_fit(log(c(0.999, 0.004, 0.003)), diff = 30, diff_se = 5),
     geneB = fake_gene_fit(log(c(0.002, 0.995, 0.001)), diff = 25, diff_se = 4),
-    geneC = fake_gene_fit(log(c(0.6, 0.7, 0.5)), diff = 3, diff_se = 2)
+    geneC = fake_gene_fit(log(c(0.6, 0.7, 0.5)), diff = 1, diff_se = 2)
   )
   new_mixture(fits, lognorm, cluster, replicate = rep(c("1", "2"), each = 3),
               settings = list(n_iter = 500, n_folds = 10, seed = 42, cores = 1))
@@ -38,28 +29,131 @@ test_that("partition_folds fills every fold and splits every replicate", {
   expect_identical(partition_folds(46, 10, labels), folds)
 })
 
-test_that("call_mixture calls bimodal genes and keeps exact fit parameters", {
-  skip_if_not_installed("mclust")
-  skip_if_not_installed("matrixStats")
-  tab <- suppressMessages(call_mixture(fake_mixture()))
+test_that("call_mixture calls binarized genes and keeps exact fit parameters", {
+  fit <- fake_mixture()
+  # posterior means that differ from the medians, to tell the summaries apart
+  fit$fits$geneA$bimodal$p_on_mean <- c(0.91, 0.05, 0.04)
+  tab <- suppressMessages(call_mixture(fit))
   expect_equal(rownames(tab), c("geneA", "geneB", "geneC"))
   expect_equal(colnames(tab)[1:3], c("1", "2", "10"))
   expect_equal(tab$exprType, c("bimodal", "bimodal", "unimodal"))
-  expect_equal(unname(unlist(tab["geneA", 1:3])), c(1, 0, 0))
-  # a gene without bimodality gets one probability in every cluster
-  expect_length(unique(unlist(tab["geneC", 1:3])), 1)
+  expect_equal(tab$not.binarized, c(NA, NA, "elpd"))
+  expect_equal(unname(unlist(tab["geneA", 1:3])), c(0.91, 0.05, 0.04))
+  # genes not binarized get no calls
+  expect_true(all(is.na(unlist(tab["geneC", 1:3]))))
+  # z, Benjamini-Hochberg q, Ashman's D
+  expect_equal(tab$elpd.z, c(6, 6.25, 0.5))
+  p <- pnorm(c(6, 6.25, 0.5), lower.tail = FALSE)
+  expect_equal(tab$elpd.q, signif(p.adjust(p, "BH"), 3))
+  expect_equal(tab$ashman.D, rep(round((1.23456789 - 0.0123456) / 0.00312, 3), 3))
+  expect_equal(tab$ashman.D.lower, tab$ashman.D)
   expect_identical(tab$bimodal.on_level, rep(1.23456789, 3))
   expect_identical(tab$bimodal.sd, rep(0.00312, 3))
   expect_identical(tab$unimodal.level, rep(0.46, 3))
-  expect_true(all(tab$exprType %in% "unimodal" | tab$diff.elpd > 2 * tab$diff.elpd.se))
+  expect_identical(attr(tab, "flags"),
+                   matrix(0L, 3, 3, dimnames = list(rownames(tab), c("1", "2", "10"))))
+  expect_true(all(is.na(attr(tab, "fold_ambient"))))
+  b <- attr(tab, "binarization")
+  expect_identical(b$summary, "mean")
+  expect_identical(b$bh_q, 0.10)
+  expect_false(b$ambient)
+  # the median summary is binarizer 1.0's
+  med <- suppressMessages(call_mixture(fit, summary = "median"))
+  expect_equal(unname(unlist(med["geneA", 1:3])), c(1, 0, 0))
+  # the cuts in use are printed
+  msgs <- testthat::capture_messages(call_mixture(fit))
+  expect_match(msgs, "2 of 3 genes are binarized", all = FALSE)
+  expect_match(msgs, "false discovery rate of 0.1 .*set bh_q", all = FALSE)
+  expect_match(msgs, "ambient check are skipped", all = FALSE)
 })
 
-test_that("call_mixture needs a bimodal gene", {
-  skip_if_not_installed("mclust")
-  skip_if_not_installed("matrixStats")
+test_that("call_mixture leaves out genes with a small Ashman's D or chains that disagree", {
   fit <- fake_mixture()
-  fit$fits <- fit$fits["geneC"]
-  expect_error(suppressMessages(call_mixture(fit)), "No bimodal gene")
+  # geneA: ON and OFF 1.5 SDs apart
+  fit$fits$geneA <- fake_gene_fit(log(c(0.999, 0.004, 0.003)), diff = 30, diff_se = 5,
+                                  on_level = 1, off_level = 0.25, sd = 0.5)
+  # geneB: chains disagree on 1 of 3 clusters
+  fit$fits$geneB$bimodal$chain_spread <- c(0, 0.7, 0)
+  expect_warning(tab <- suppressMessages(call_mixture(fit)), "No gene is binarized")
+  expect_equal(tab$ashman.D[1], 1.5)
+  expect_equal(tab$not.binarized, c("ashman_D", "chains", "elpd"))
+  expect_equal(tab$spread.share[2], round(1 / 3, 3))
+  # looser cuts keep both; the cluster whose chains disagree is flagged
+  tab <- suppressMessages(call_mixture(fit, min_D = 1, reject_spread_frac = 0.5))
+  expect_equal(tab$exprType, c("bimodal", "bimodal", "unimodal"))
+  expect_identical(unname(attr(tab, "flags")["geneB", ]), c(0L, CALL_FLAG_CHAINS, 0L))
+  # Ashman's D lower bound: 10th percentile over draws
+  d <- fit$fits$geneA$bimodal$draws
+  d[, , 1] <- seq(0.6, 1.5, length.out = 10)
+  fit$fits$geneA$bimodal$draws <- d
+  D <- (seq(0.6, 1.5, length.out = 10) - 0.25) / 0.5
+  tab <- suppressMessages(call_mixture(fit, min_D = 0))
+  expect_equal(tab$ashman.D[1], round(median(D), 3))
+  expect_equal(tab$ashman.D.lower[1], round(unname(quantile(D, 0.1)), 3))
+})
+
+test_that("call_mixture flags clusters below the detection floor or above ambient RNA", {
+  fit <- fake_mixture()
+  # 4 cells per cluster in one library; 10 more genes make up the library's
+  # UMIs (the ambient profile)
+  cl <- rep(c("1", "2", "10"), each = 4)
+  counts <- matrix(5L, 13, 12, dimnames = list(c("geneA", "geneB", "geneC",
+    paste0("bg", 1:10)), paste0("c", 1:12)))
+  counts["geneA", ] <- c(40L, 40L, 40L, 40L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L)
+  counts["geneB", ] <- c(0L, 0L, 0L, 0L, 30L, 30L, 30L, 30L, 30L, 30L, 30L, 30L)
+  amb <- ambient_summary(counts, cl, rho = 0.01)
+  tab <- suppressMessages(call_mixture(fit, amb))
+  flags <- attr(tab, "flags")
+  # geneA is undetected in clusters 2 and 10, and above ambient in cluster 1,
+  # where it is ON (binarize() applies the ambient flag to OFF calls only)
+  expect_identical(unname(flags["geneA", ]),
+                   c(CALL_FLAG_AMBIENT, CALL_FLAG_DETECTION, CALL_FLAG_DETECTION))
+  # geneB's 120 UMIs in cluster 10 are far above 8 x its ambient share there
+  expect_identical(unname(flags["geneB", ]),
+                   c(CALL_FLAG_DETECTION, CALL_FLAG_AMBIENT, CALL_FLAG_AMBIENT))
+  lam <- ambient_expected(amb, rownames(tab), c("1", "2", "10"))
+  expect_equal(attr(tab, "fold_ambient"),
+               round(log2((amb$umi[rownames(tab), c("1", "2", "10")] + 1) / (lam + 1)), 3))
+  expect_true(attr(tab, "binarization")$ambient)
+  expect_identical(attr(tab, "binarization")$rho, list(`1` = 0.01))
+  # a permissive enough offset lets the UMIs pass as ambient
+  tab <- suppressMessages(call_mixture(fit, amb, ambient_log2fc = 12))
+  expect_identical(unname(attr(tab, "flags")["geneA", ]), c(0L, CALL_FLAG_DETECTION, CALL_FLAG_DETECTION))
+  expect_identical(unname(attr(tab, "flags")["geneB", ]), c(CALL_FLAG_DETECTION, 0L, 0L))
+  # ambient must cover the fit
+  expect_error(suppressMessages(call_mixture(fit, ambient_summary(counts[-1, ], cl, rho = 0.01))),
+               "Gene\\(s\\) not in ambient: geneA")
+  expect_error(suppressMessages(call_mixture(fit, ambient_summary(counts[, 1:8], cl[1:8], rho = 0.01))),
+               "Cluster\\(s\\) not in ambient: 10")
+  expect_error(call_mixture(fit, list()), "must come from ambient_summary")
+})
+
+test_that("call_mixture checks its parameters", {
+  fit <- fake_mixture()
+  expect_error(call_mixture(fit, bh_q = 0), "bh_q must be one number in \\(0, 1\\)")
+  expect_error(call_mixture(fit, spread_cutoff = 2), "spread_cutoff must be")
+  expect_error(call_mixture(fit, min_D = -1), "min_D must be one number of at least 0")
+  expect_error(call_mixture(fit, summary = "mode"), "should be one of")
+})
+
+test_that("call_mixture calls binarizer 1.0 fits from their medians, with a warning", {
+  fit <- fake_mixture()
+  fit$fits <- lapply(fit$fits, function(g) {
+    g$bimodal[c("draws", "p_on_mean", "chain_spread")] <- NULL
+    g
+  })
+  fit$binarizer_version <- "1.0"
+  expect_warning(msgs <- testthat::capture_messages(tab <- call_mixture(fit)),
+                 "refitting with fit_mixture\\(\\) is recommended")
+  expect_match(msgs, "posterior median and there is no chain-spread check", all = FALSE)
+  expect_equal(unname(unlist(tab["geneA", 1:3])), c(1, 0, 0))
+  expect_equal(tab$exprType, c("bimodal", "bimodal", "unimodal"))
+  expect_equal(tab$ashman.D[1], round((1.23456789 - 0.0123456) / 0.00312, 3))
+  expect_true(all(is.na(tab$ashman.D.lower)))
+  expect_identical(attr(tab, "binarization")$summary, "median")
+  # a 1.1 fit must keep its draws
+  fit$binarizer_version <- SCMARCO_BINARIZER_VERSION
+  expect_error(suppressMessages(call_mixture(fit)), "keeps no draws")
 })
 
 test_that("merge_mixture_fits joins chunks of genes", {
@@ -154,8 +248,6 @@ test_that("fit_mixture fits genes with Stan", {
 })
 
 test_that("fits that did not converge are reported", {
-  skip_if_not_installed("mclust")
-  skip_if_not_installed("matrixStats")
   diag <- function(rhat, n_eff) cbind(Rhat = rhat, n_eff = n_eff)
   fit <- fake_mixture()
   # no diagnostics (fits made without Stan): convergence unknown, not reported

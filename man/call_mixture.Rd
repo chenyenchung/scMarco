@@ -4,37 +4,124 @@
 \alias{call_mixture}
 \title{Call expression from mixture-model fits}
 \usage{
-call_mixture(fit)
+call_mixture(
+  fit,
+  ambient = NULL,
+  bh_q = 0.1,
+  min_D = 2,
+  spread_cutoff = 0.5,
+  reject_spread_frac = 0.1,
+  summary = c("mean", "median"),
+  on_floor = 0.05,
+  ambient_log2fc = 3,
+  ambient_alpha = 0.001
+)
 }
 \arguments{
-\item{fit}{Fits from \code{\link[=fit_mixture]{fit_mixture()}} or \code{\link[=merge_mixture_fits]{merge_mixture_fits()}}, of
-every gene of the split (the pooled distributions use them all).}
+\item{fit}{Fits from \code{\link[=fit_mixture]{fit_mixture()}} or \code{\link[=merge_mixture_fits]{merge_mixture_fits()}}, of every
+gene of the split (the false discovery rate is controlled over them).}
+
+\item{ambient}{\code{\link[=ambient_summary]{ambient_summary()}} of the same split's cells, with every
+fitted gene and cluster, or \code{NULL} to skip the detection floor and the
+ambient check.}
+
+\item{bh_q}{False discovery rate (Benjamini-Hochberg) at which a gene's
+bimodal fit counts as better than its unimodal one.}
+
+\item{min_D}{Smallest Ashman's D of a binarized gene.}
+
+\item{spread_cutoff}{Chain spread of P(On) above which a cluster's call is
+ambiguous.}
+
+\item{reject_spread_frac}{Share of a gene's clusters above \code{spread_cutoff}
+at which the gene is not binarized.}
+
+\item{summary}{Summary of each cluster's P(On) over the posterior:
+\code{"mean"} or \code{"median"}.}
+
+\item{on_floor}{Smallest share of a cluster's cells detecting the gene
+(at least one UMI) for an ON call.}
+
+\item{ambient_log2fc}{Offset of the ambient check, in log2 fold over the
+expected ambient UMIs.}
+
+\item{ambient_alpha}{Level of the ambient check.}
 }
 \value{
-A data.frame, genes x clusters probabilities of expression
-(rounded to 2 decimals), followed by \code{diff.elpd}, \code{diff.elpd.se}
-(rounded), the bimodal fit's \code{bimodal.on_level}, \code{bimodal.off_level},
-\code{bimodal.sd} and \code{bimodal.pi} (posterior medians, unrounded so that the
-mixture-model plot is exact), \code{unimodal.level}, \code{unimodal.sd} (rounded)
-and \code{exprType} (\code{"bimodal"} or \code{"unimodal"}). Its attribute
-\code{scmarco_binarizer} holds the binarizer version, which
-\code{\link[=add_probability]{add_probability()}} records in the dataset; it survives \code{\link[=saveRDS]{saveRDS()}},
-but not subsetting, after which the table counts as external.
+A data.frame, genes x clusters P(On) (rounded to 2 decimals; \code{NA}
+for genes not binarized), followed by \code{diff.elpd}, \code{diff.elpd.se},
+\code{elpd.z}, \code{elpd.q} (BH), \code{ashman.D} (posterior median) and
+\code{ashman.D.lower} (10th percentile), \code{spread.share} (share of clusters
+above \code{spread_cutoff}), the bimodal fit's \code{bimodal.on_level},
+\code{bimodal.off_level}, \code{bimodal.sd} and \code{bimodal.pi} (posterior medians,
+unrounded so that the mixture-model plot is exact), \code{unimodal.level},
+\code{unimodal.sd}, \code{exprType} (\code{"bimodal"} for binarized genes, otherwise
+\code{"unimodal"}) and \code{not.binarized} (why: \code{"elpd"}, \code{"ashman_D"} or
+\code{"chains"}; \code{NA} for binarized genes). Attributes: \code{flags} (genes x
+clusters integers, see Details), \code{fold_ambient} (genes x clusters log2
+fold of the UMIs over the expected ambient UMIs, log2((observed + 1) /
+(expected + 1)), used to rank pairs; \code{NA} without \code{ambient}),
+\code{binarization} (the parameters in use and the contamination per
+library) and \code{scmarco_binarizer} (the binarizer version, which
+\code{\link[=add_probability]{add_probability()}} records in the dataset). The attributes survive
+\code{\link[=saveRDS]{saveRDS()}} and selecting genes (rows), but not selecting columns,
+after which the table counts as external.
+
+Fits of binarizer 1.0 (no draws) are called with the median summary,
+Ashman's D from the posterior medians and no chain-spread rules.
 }
 \description{
 Turns the fits of \code{\link[=fit_mixture]{fit_mixture()}} into one split's probability table for
-\code{\link[=add_probability]{add_probability()}}. A gene is bimodal when its bimodal fit beats the
-unimodal one by more than two standard errors of the elpd difference; its
-probability of expression in a cluster is then the bimodal model's. For
-the other genes, expression in all of the split's samples is compared
-with the ON and OFF distributions pooled from the bimodal genes (samples
-with P(On) > 0.9 and < 0.1), which gives one probability for every
-cluster. Needs at least one bimodal gene. Genes whose fit did not converge
-(see \code{\link[=fit_mixture]{fit_mixture()}}) are named in a warning; their calls are kept.
+\code{\link[=add_probability]{add_probability()}} (binarizer 1.1). It decides which genes are binarized,
+gives each cluster of those genes its probability of expression, and flags
+the clusters whose call is not to be trusted. Every cut is a parameter;
+the values in use are printed and recorded with the table.
+}
+\details{
+\strong{Binarized genes.} A gene is binarized when all of these hold:
+\itemize{
+\item its bimodal fit beats the unimodal one: z = elpd difference / its SE,
+one-sided normal p, Benjamini-Hochberg over the split's genes, q <
+\code{bh_q};
+\item its ON and OFF states are apart: Ashman's D, (ON level - OFF level) /
+within-state SD (posterior median over draws), is at least \code{min_D};
+\item its chains agree: fewer than \code{reject_spread_frac} of its clusters have a
+chain spread above \code{spread_cutoff} (the spread is the max - min of the
+bimodal fit's chain means of P(On)).
+}
+
+Genes that are not binarized get no calls (\code{NA}), only their expression
+level; there is no dataset-wide ON/OFF scale.
+
+\strong{Calls.} P(On) of a cluster is the posterior mean over draws
+(\code{summary = "mean"}); \code{"median"} gives binarizer 1.0's posterior median,
+which picks a side at random for broad genes. The ambiguity band (ON
+above 0.5 + band, OFF below 0.5 - band) is applied when the dataset is
+read (\code{\link[=binarize]{binarize()}}, the app's band slider). On top of it, these flags make
+a call ambiguous (attribute \code{flags}, one integer per gene x cluster, the
+sum of):
+\itemize{
+\item 1, chains disagree: the cluster's chain spread is above \code{spread_cutoff};
+\item 2, below the detection floor: fewer than \code{on_floor} of the cluster's
+cells have a UMI of the gene, so it cannot be ON;
+\item 4, above ambient: the cluster's UMIs of the gene exceed
+\code{2^ambient_log2fc} times the ambient RNA expected in it (Poisson
+P(X >= observed) < \code{ambient_alpha}), so it cannot be OFF. The offset is
+deliberately maximally permissive: only clear expression is caught;
+smaller excesses are left to the ranking of the pair search.
+}
+
+Flags 2 and 4 need \code{ambient}, the per-cluster counts and ambient-RNA
+estimate of \code{\link[=ambient_summary]{ambient_summary()}}; without it those checks are skipped, with
+a message.
 }
 \examples{
 \dontrun{
-tables <- list(Male = call_mixture(male_fit), Female = call_mixture(female_fit))
+# one split's raw counts, every gene
+male_amb <- ambient_summary(male_counts, cluster = male$scmarco_cluster,
+    library = male$orig.ident)
+tables <- list(Male = call_mixture(male_fit, male_amb),
+    Female = call_mixture(female_fit, female_amb))
 add_probability("data/mydata.clusters.h5ad", tables)
 }
 }
@@ -42,7 +129,14 @@ add_probability("data/mydata.clusters.h5ad", tables)
 Davis FP, Nern A, Picard S, et al. (2020). A genetic, genomic,
 and computational resource for exploring neural circuit function. eLife
 9:e50901. Code: \url{https://github.com/fredpdavis/opticlobe}.
+
+Benjamini Y, Hochberg Y (1995). Controlling the false discovery rate: a
+practical and powerful approach to multiple testing. Journal of the
+Royal Statistical Society B 57:289-300.
+
+Ashman KM, Bird CM, Zepf SE (1994). Detecting bimodality in
+astronomical datasets. The Astronomical Journal 108:2348-2361.
 }
 \seealso{
-\code{\link[=fit_mixture]{fit_mixture()}}, \code{\link[=add_probability]{add_probability()}}.
+\code{\link[=fit_mixture]{fit_mixture()}}, \code{\link[=ambient_summary]{ambient_summary()}}, \code{\link[=add_probability]{add_probability()}}.
 }

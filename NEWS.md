@@ -34,6 +34,14 @@
   app's slider. The app's default is 30% (ON at 0.8, OFF at 0.2, Fred P.
   Davis's thresholds) instead of a 10% margin. `margin`, and `cut` in
   `find_pairs()`, still work with a deprecation warning.
+* Binarizer 1.1 calls (`call_mixture()`): genes are binarized at a false
+  discovery rate of 10% (Benjamini-Hochberg on the elpd z, instead of two
+  standard errors), with Ashman's D >= 2 and chains that agree; genes not
+  binarized get no calls, and the dataset-wide ON/OFF distributions are gone.
+  P(On) is the posterior mean. Flags mark calls whose chains disagree, ON
+  calls below a detection floor and OFF calls above ambient RNA
+  (`ambient_summary()`, DecontX per library). Every cut is an argument and is
+  printed. mclust is no longer needed.
 * New synthetic example dataset `toy` (inst/extdata) with a cells file,
   reduction, cluster names and metadata, and mixture-model fits.
 * Fixed: a config without `gene_list` no longer fails to build the UI.
