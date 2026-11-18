@@ -19,8 +19,9 @@ probability is at least \code{0.5 + band}, OFF when it is at most
 A binarized dataset (see \code{\link[=binarize]{binarize()}}).
 }
 \description{
-\code{\link[=binarize]{binarize()}} applied to a dataset. The two most recent bands are cached
-with the dataset.
+\code{\link[=binarize]{binarize()}} applied to a dataset, with the dataset's binarizer 1.1 flags
+(\code{layers/call_flags}) when it has them. The two most recent bands are
+cached with the dataset.
 }
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")

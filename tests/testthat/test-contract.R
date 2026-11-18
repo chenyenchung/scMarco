@@ -258,3 +258,32 @@ test_that("add_probability stores the binarizer 1.1 flags, folds, gene values an
   # ... and a 1.1 dataset without them is reported
   expect_match(validate_h5ad(path)$warnings, "layers/call_flags is missing", all = FALSE)
 })
+
+test_that("ds_binarize applies the stored flags of a binarizer 1.1 dataset", {
+  path <- toy_copy()
+  tabs <- toy_tables_v11(path)
+  cl1 <- setdiff(colnames(tabs$Male), QC_COLS)[1]
+  g <- rownames(tabs$Male)[1:3]
+  male <- tabs$Male
+  male[g, cl1] <- c(0.99, 0.01, 0.01)
+  for (a in c("flags", "fold_ambient", "binarization", "scmarco_binarizer")) {
+    attr(male, a) <- attr(tabs$Male, a)
+  }
+  tabs$Male <- male
+  fl <- attr(tabs$Male, "flags")
+  fl[g, cl1] <- c(CALL_FLAG_AMBIENT, CALL_FLAG_AMBIENT, 0L)   # ON stays, OFF -> ambiguous
+  attr(tabs$Male, "flags") <- fl
+  suppressMessages(add_probability(path, tabs))
+  ds <- ds_load(paste0("toy", runif(1)), list(label = "Toy", clusters = path))
+  expect_identical(dim(ds$flags), dim(ds$prob))
+  b <- ds_binarize(ds, 0.3)
+  expect_true(b$flags_applied)
+  expect_identical(unname(b$on[g, cl1, "Male"]), c(TRUE, FALSE, FALSE))
+  expect_identical(unname(b$ambiguous[g, cl1, "Male"]), c(FALSE, TRUE, FALSE))
+  # a dataset without flags is binarized by the band alone
+  plain <- toy_copy()
+  suppressMessages(add_probability(plain, toy_tables(plain), external = TRUE))
+  ds <- ds_load(paste0("toy", runif(1)), list(label = "Toy", clusters = plain))
+  expect_null(ds$flags)
+  expect_false(ds_binarize(ds, 0.3)$flags_applied)
+})

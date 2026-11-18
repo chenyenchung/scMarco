@@ -31,6 +31,29 @@ test_that("binarize marks absent clusters and uses a strict threshold", {
   expect_true(b$on["g1", "A", "s3"])
 })
 
+test_that("binarize makes the calls flagged by the binarizer 1.1 ambiguous", {
+  # one split, six clusters; columns: ON, OFF and intermediate calls, and no call
+  prob <- matrix(c(0.95, 0.95, 0.95, 0.02, 0.02, 0.02, 0.5, NA), ncol = 1,
+                 dimnames = list(NULL, "g"))
+  flags <- matrix(c(CALL_FLAG_CHAINS, CALL_FLAG_DETECTION, CALL_FLAG_AMBIENT,
+                    CALL_FLAG_CHAINS, CALL_FLAG_DETECTION, CALL_FLAG_AMBIENT, 0L,
+                    CALL_FLAG_AMBIENT), ncol = 1)
+  cl <- paste0("c", 1:8)
+  b <- binarize(prob, rep("s", 8), cl, "s", cl, band = 0.3, flags = flags)
+  # ON: chains disagree or below the detection floor -> ambiguous; above ambient stays ON
+  # OFF: chains disagree or above ambient -> ambiguous; below the floor stays OFF
+  expect_identical(unname(b$on["g", , "s"]),
+                   c(FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE))
+  expect_identical(unname(b$ambiguous["g", , "s"]),
+                   c(TRUE, TRUE, FALSE, TRUE, FALSE, TRUE, TRUE, FALSE))
+  expect_true(b$flags_applied)
+  # without flags only the band decides
+  b0 <- binarize(prob, rep("s", 8), cl, "s", cl, band = 0.3)
+  expect_identical(unname(b0$on["g", , "s"]), rep(c(TRUE, FALSE), c(3, 5)))
+  expect_false(b0$flags_applied)
+  expect_error(binarize(prob, rep("s", 8), cl, "s", cl, band = 0.3, flags = flags[-1, , drop = FALSE]))
+})
+
 test_that("target_genes applies required splits AND min_n", {
   b <- toy()
   expect_setequal(target_genes(b, "A", character(0), 1), c("g1", "g2", "g4"))

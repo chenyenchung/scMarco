@@ -43,7 +43,8 @@
   (`ambient_summary()`, DecontX per library). Every cut is an argument and is
   printed. mclust is no longer needed. `add_probability()` stores the flags,
   the log2 fold over ambient RNA, the per-gene values and the parameters with
-  the dataset, and `validate_h5ad()` checks them.
+  the dataset, and `validate_h5ad()` checks them. `binarize()` (`flags`) and
+  `ds_binarize()` make the flagged calls ambiguous on top of the band.
 * New synthetic example dataset `toy` (inst/extdata) with a cells file,
   reduction, cluster names and metadata, and mixture-model fits.
 * Fixed: a config without `gene_list` no longer fails to build the UI.

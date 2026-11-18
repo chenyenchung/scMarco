@@ -9,7 +9,10 @@
 #                                      that split)
 #   ambiguous[gene, cluster, split]
 #                             logical  0.5 - band < prob < 0.5 + band: neither
-#                                      confidently ON nor confidently OFF
+#                                      confidently ON nor confidently OFF; or
+#                                      a call that the binarizer 1.1 flags
+#                                      (chains disagree, ON below the detection
+#                                      floor, OFF above ambient RNA)
 #   present[cluster, split]   logical  the cluster exists in the split
 #   bimodal[gene, split]      logical  the mixture model called the gene bimodal
 #
@@ -34,6 +37,11 @@
 #' expression. A gene the mixture model did not call bimodal in a split is
 #' neither ON nor ambiguous there.
 #'
+#' With `flags` (binarizer 1.1, from [call_mixture()]), calls the binarizer
+#' does not trust become ambiguous whatever the band: any call whose chains
+#' disagree (flag 1), an ON call below the detection floor (flag 2) and an
+#' OFF call above ambient RNA (flag 4).
+#'
 #' @param prob Numeric matrix, one row per split x cluster pair that exists
 #'   and one column per gene (column names are the genes). `NA` is OFF.
 #' @param obs_split,obs_cluster Character vectors: the split and cluster of
@@ -44,12 +52,16 @@
 #'   The default elsewhere in scMarco is 0.3 (ON at 0.8, OFF at 0.2).
 #' @param bimodal Optional logical matrix, genes x splits: whether the
 #'   mixture model called the gene bimodal in that split.
+#' @param flags Optional integer matrix shaped like `prob`: the flags of
+#'   [call_mixture()] (the sum of 1 chains disagree, 2 below the detection
+#'   floor, 4 above ambient RNA), as stored in `layers/call_flags`.
 #'
 #' @return An object of class `scmarco_binarized`: a list with the logical
 #'   arrays `on` and `ambiguous` (genes x clusters x splits), the logical
 #'   matrices `present` (clusters x splits), `bimodal` (genes x splits) and
 #'   `anyon` (genes x clusters: ON or ambiguous in any split, see [any_on()]),
-#'   and `genes`, `clusters`, `splits` and `band`.
+#'   `genes`, `clusters`, `splits`, `band` and `flags_applied` (whether
+#'   `flags` were given).
 #' @param margin Deprecated: the former confidence margin, `0.5 - band`.
 #' @examples
 #' prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,
@@ -61,7 +73,7 @@
 #' b$ambiguous[, , "adult"]
 #' @export
 binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
-                     band, bimodal = NULL, margin = NULL) {
+                     band, bimodal = NULL, flags = NULL, margin = NULL) {
     band <- band_from_margin(if (missing(band)) NULL else band, margin)
     stopifnot(
         nrow(prob) == length(obs_split),
@@ -86,6 +98,17 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
     off <- is.na(prob) | prob <= 0.5 - band + eps
     hit <- !off & prob >= 0.5 + band - eps
     unsure <- !off & !hit
+    if (!is.null(flags)) {
+        stopifnot(identical(dim(flags), dim(prob)))
+        has <- function(bit) !is.na(flags) & (flags %/% bit) %% 2 == 1
+        chains <- has(CALL_FLAG_CHAINS)
+        # NA probabilities (no call) stay OFF
+        to_unsure <- (hit & (chains | has(CALL_FLAG_DETECTION))) |
+            (off & !is.na(prob) & (chains | has(CALL_FLAG_AMBIENT)))
+        hit <- hit & !to_unsure
+        off <- off & !to_unsure
+        unsure <- unsure | to_unsure
+    }
 
     # Fill genes x (clusters * splits) matrices, whose column (si - 1) *
     # n_clusters + ci is slice [, ci, si] of the final array, with one
@@ -116,7 +139,8 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
         list(
             on = on, ambiguous = ambiguous, present = present, bimodal = bimodal,
             anyon = anyon_matrix(on, ambiguous),
-            genes = genes, clusters = clusters, splits = splits, band = band
+            genes = genes, clusters = clusters, splits = splits, band = band,
+            flags_applied = !is.null(flags)
         ),
         class = "scmarco_binarized"
     )

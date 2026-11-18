@@ -325,7 +325,9 @@ They are stored only when every split's table has them (tables from outside
 scMarco, or subset tables, have none), and replaced or removed with the
 probabilities when `add_probability()` runs again. The validator checks their
 shapes and values, and warns when a dataset of the current binarizer lacks
-`layers/call_flags`.
+`layers/call_flags`. The app (`ds_binarize()`) applies the flags on top of
+the ambiguity band: a call whose chains disagree, an ON call below the
+detection floor and an OFF call above ambient RNA are ambiguous.
 
 ### 2b. Legacy wide RDS (accepted)
 

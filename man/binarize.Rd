@@ -12,6 +12,7 @@ binarize(
   clusters,
   band,
   bimodal = NULL,
+  flags = NULL,
   margin = NULL
 )
 }
@@ -31,6 +32,10 @@ The default elsewhere in scMarco is 0.3 (ON at 0.8, OFF at 0.2).}
 \item{bimodal}{Optional logical matrix, genes x splits: whether the
 mixture model called the gene bimodal in that split.}
 
+\item{flags}{Optional integer matrix shaped like \code{prob}: the flags of
+\code{\link[=call_mixture]{call_mixture()}} (the sum of 1 chains disagree, 2 below the detection
+floor, 4 above ambient RNA), as stored in \code{layers/call_flags}.}
+
 \item{margin}{Deprecated: the former confidence margin, \code{0.5 - band}.}
 }
 \value{
@@ -38,7 +43,8 @@ An object of class \code{scmarco_binarized}: a list with the logical
 arrays \code{on} and \code{ambiguous} (genes x clusters x splits), the logical
 matrices \code{present} (clusters x splits), \code{bimodal} (genes x splits) and
 \code{anyon} (genes x clusters: ON or ambiguous in any split, see \code{\link[=any_on]{any_on()}}),
-and \code{genes}, \code{clusters}, \code{splits} and \code{band}.
+\code{genes}, \code{clusters}, \code{splits}, \code{band} and \code{flags_applied} (whether
+\code{flags} were given).
 }
 \description{
 Turns per-cluster probabilities of expression into ON, OFF and ambiguous
@@ -52,6 +58,11 @@ between (the ambiguity band).
 Ambiguous calls never count as ON, but they do count as off-target
 expression. A gene the mixture model did not call bimodal in a split is
 neither ON nor ambiguous there.
+
+With \code{flags} (binarizer 1.1, from \code{\link[=call_mixture]{call_mixture()}}), calls the binarizer
+does not trust become ambiguous whatever the band: any call whose chains
+disagree (flag 1), an ON call below the detection floor (flag 2) and an
+OFF call above ambient RNA (flag 4).
 }
 \examples{
 prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,
