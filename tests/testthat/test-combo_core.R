@@ -54,6 +54,43 @@ test_that("binarize makes the calls flagged by the binarizer 1.1 ambiguous", {
   expect_error(binarize(prob, rep("s", 8), cl, "s", cl, band = 0.3, flags = flags[-1, , drop = FALSE]))
 })
 
+test_that("pair_offtargets breaks ties by separation, then Ashman's D", {
+  # g1-g3 are ON in the target T and OFF in A and B
+  cl <- c("T", "A", "B")
+  prob <- matrix(rep(c(0.95, 0.02, 0.02), 3), 3, dimnames = list(NULL, paste0("g", 1:3)))
+  # log2 fold over ambient
+  fold <- rbind(c(5, 4, 6),     # T
+                c(2, 0.5, 1),   # A
+                c(0, 3, 3))     # B
+  b <- binarize(prob, rep("s", 3), cl, "s", cl, band = 0.3, fold = fold)
+  res <- pair_offtargets(b, "T", character(0), 1)
+  # g1+g3: target 5, worst leak max(min(2, 1), min(0, 3)) = 1 -> 4
+  # g1+g2: target 4, leak max(0.5, 0) = 0.5 -> 3.5; g2+g3: 4 - 3 = 1
+  expect_identical(paste(res$gene1, res$gene2), c("g1 g3", "g1 g2", "g2 g3"))
+  expect_equal(res$separation, c(4, 3.5, 1))
+  expect_equal(res$target_fold, c(5, 4, 4))
+  expect_equal(res$worst_leak, c(1, 0.5, 3))
+  expect_true(all(res$offtargets == 0))
+  # an off-target cluster (both genes ON) is not a leak
+  prob2 <- prob
+  prob2[3, 1:2] <- 0.95
+  res2 <- pair_offtargets(binarize(prob2, rep("s", 3), cl, "s", cl, band = 0.3, fold = fold),
+                          "T", character(0), 1)
+  expect_equal(res2$worst_leak[res2$gene1 == "g1" & res2$gene2 == "g2"], 0.5)
+  expect_equal(res2$offtargets[res2$gene1 == "g1" & res2$gene2 == "g2"], 1)
+  # without folds: the weaker gene's Ashman's D lower bound, then position
+  D <- matrix(c(3, 1, 2), 3, dimnames = list(paste0("g", 1:3), "s"))
+  b <- binarize(prob, rep("s", 3), cl, "s", cl, band = 0.3, ashman_D_lower = D)
+  res <- pair_offtargets(b, "T", character(0), 1)
+  expect_identical(paste(res$gene1, res$gene2), c("g1 g3", "g1 g2", "g2 g3"))
+  expect_equal(res$ashman_D_lower, c(2, 1, 1))
+  expect_true(all(is.na(res$separation)))
+  # without either: as before (single-gene off-targets, then position)
+  res <- pair_offtargets(binarize(prob, rep("s", 3), cl, "s", cl, band = 0.3),
+                         "T", character(0), 1)
+  expect_identical(paste(res$gene1, res$gene2), c("g1 g2", "g1 g3", "g2 g3"))
+})
+
 test_that("target_genes applies required splits AND min_n", {
   b <- toy()
   expect_setequal(target_genes(b, "A", character(0), 1), c("g1", "g2", "g4"))

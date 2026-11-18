@@ -280,6 +280,10 @@ test_that("ds_binarize applies the stored flags of a binarizer 1.1 dataset", {
   expect_true(b$flags_applied)
   expect_identical(unname(b$on[g, cl1, "Male"]), c(TRUE, FALSE, FALSE))
   expect_identical(unname(b$ambiguous[g, cl1, "Male"]), c(FALSE, TRUE, FALSE))
+  # the ranking data reach the binarized dataset
+  expect_equal(unname(b$fold[g[1], cl1, "Male"]), 0.1)
+  expect_true(all(is.na(b$fold[, , "Female"])))
+  expect_true(all(b$ashman_D_lower == 2.5))
   # a dataset without flags is binarized by the band alone
   plain <- toy_copy()
   suppressMessages(add_probability(plain, toy_tables(plain), external = TRUE))

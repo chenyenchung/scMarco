@@ -94,8 +94,17 @@ find_exp_server <- function(id, ctx) {
                     return(tags$p(style = "margin: 10px", "Fewer than two candidate genes; no pairs to rank."))
                 }
                 tbl <- res$pairs
-                names(tbl) <- c("Gene 1", "Gene 2", "Clusters where both are ON",
-                    "Off-targets of each gene, summed")
+                labels <- c(gene1 = "Gene 1", gene2 = "Gene 2",
+                    offtargets = "Clusters where both are ON or ambiguous",
+                    separation = "Separation (log2 over ambient)",
+                    target_fold = "Target strength", worst_leak = "Worst leak",
+                    ashman_D_lower = "Ashman's D (lower bound)",
+                    single_offtargets = "Off-targets of each gene, summed")
+                # the binarizer 1.1 ranking columns only for datasets that have the data
+                rank_cols <- c("separation", "target_fold", "worst_leak", "ashman_D_lower")
+                empty <- rank_cols[vapply(tbl[rank_cols], function(v) all(is.na(v)), logical(1))]
+                tbl <- tbl[setdiff(names(labels), empty)]
+                names(tbl) <- labels[names(tbl)]
                 tagList(
                     tags$h4(style = "margin: 10px", "Best pairs for ", cluster_label(res$ds, res$ident)),
                     renderTable(tbl, striped = TRUE)

@@ -31,15 +31,29 @@ pair_offtargets(
 \item{genes}{Genes to consider (default: every gene of \code{b}).}
 }
 \value{
-A data.frame with columns \code{gene1}, \code{gene2}, \code{offtargets} and
-\code{single_offtargets} (the off-targets of each gene on its own, summed;
-used to break ties), best first.
+A data.frame with columns \code{gene1}, \code{gene2}, \code{offtargets},
+\code{separation}, \code{target_fold}, \code{worst_leak}, \code{ashman_D_lower} (\code{NA}
+without the ranking data) and \code{single_offtargets} (the off-targets of
+each gene on its own, summed), best first.
 }
 \description{
 Ranks pairs of genes that both pass the split criteria in \code{ident} by the
 number of other clusters in which both genes are ON or ambiguous (in any
 split): the off-targets of an intersectional (e.g. split-GAL4)
 combination.
+}
+\details{
+Ties are broken by the binarizer 1.1 ranking data when \code{b} has it (from
+\code{\link[=ds_binarize]{ds_binarize()}} of a dataset binarized with \code{\link[=call_mixture]{call_mixture()}} tables):
+first by \strong{separation}, the pair's target strength minus its worst leak,
+in log2 fold over ambient RNA (log2((UMIs + 1) / (expected ambient UMIs +
+1))): the target strength is the weaker gene's fold in \code{ident} (lowest
+over the splits where both genes are ON there), and the worst leak is,
+over the other clusters and splits where at least one of the two genes is
+OFF, the largest of the pair's smaller folds (an intersectional driver
+needs both genes). Then by the weaker gene's lower bound of Ashman's D
+(10th percentile over the posterior), and last by the single-gene
+off-targets. A leak of about 1 or less is a single stray UMI.
 }
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")

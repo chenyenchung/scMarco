@@ -532,6 +532,14 @@ ds_load <- function(id, entry) {
         prob = h5ad_layer(ch, "prob"),
         # binarizer 1.1 flags of call_mixture() (NULL for datasets without them)
         flags = if ("call_flags" %in% ch$layers) h5ad_layer(ch, "call_flags"),
+        # binarizer 1.1 ranking data: log2 fold over ambient RNA, and each
+        # gene's lower bound of Ashman's D per split
+        fold = if ("fold_ambient" %in% ch$layers) h5ad_layer(ch, "fold_ambient"),
+        ashman_D_lower = if ("call_ashman_D_lower" %in% ch$varm) {
+            m <- h5ad_varm(ch, "call_ashman_D_lower")
+            dimnames(m) <- list(ch$genes, as.character(meta$bimodal_splits))
+            m
+        },
         bimodal = bimodal,
         mixture = mixture,
         mixture_models = mixture_models,
@@ -559,8 +567,9 @@ ds_load <- function(id, entry) {
 #' Binarize a dataset at an ambiguity band
 #'
 #' [binarize()] applied to a dataset, with the dataset's binarizer 1.1 flags
-#' (`layers/call_flags`) when it has them. The two most recent bands are
-#' cached with the dataset.
+#' (`layers/call_flags`) and ranking data (`layers/fold_ambient`,
+#' `varm/call_ashman_D_lower`) when it has them. The two most recent bands
+#' are cached with the dataset.
 #'
 #' @param ds A dataset from [ds_load()].
 #' @param band Half-width of the ambiguity band in \[0, 0.5): ON when the
@@ -580,7 +589,8 @@ ds_binarize <- function(ds, band, margin = NULL) {
     cached(ds$binarized, format(band, nsmall = 3), size = 2, binarize(
         ds$prob, ds$obs_split, ds$obs_cluster,
         splits = ds$splits, clusters = ds$clusters,
-        band = band, bimodal = ds$bimodal, flags = ds$flags
+        band = band, bimodal = ds$bimodal, flags = ds$flags, fold = ds$fold,
+        ashman_D_lower = ds$ashman_D_lower
     ))
 }
 

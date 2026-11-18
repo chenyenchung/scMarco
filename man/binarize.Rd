@@ -13,6 +13,8 @@ binarize(
   band,
   bimodal = NULL,
   flags = NULL,
+  fold = NULL,
+  ashman_D_lower = NULL,
   margin = NULL
 )
 }
@@ -36,6 +38,14 @@ mixture model called the gene bimodal in that split.}
 \code{\link[=call_mixture]{call_mixture()}} (the sum of 1 chains disagree, 2 below the detection
 floor, 4 above ambient RNA), as stored in \code{layers/call_flags}.}
 
+\item{fold}{Optional numeric matrix shaped like \code{prob}: each entry's log2
+fold over ambient RNA (\code{layers/fold_ambient}), used by
+\code{\link[=pair_offtargets]{pair_offtargets()}} to rank pairs.}
+
+\item{ashman_D_lower}{Optional numeric matrix, genes x splits: the lower
+bound of each gene's Ashman's D (\code{varm/call_ashman_D_lower}), used by
+\code{\link[=pair_offtargets]{pair_offtargets()}} to break ties.}
+
 \item{margin}{Deprecated: the former confidence margin, \code{0.5 - band}.}
 }
 \value{
@@ -43,8 +53,9 @@ An object of class \code{scmarco_binarized}: a list with the logical
 arrays \code{on} and \code{ambiguous} (genes x clusters x splits), the logical
 matrices \code{present} (clusters x splits), \code{bimodal} (genes x splits) and
 \code{anyon} (genes x clusters: ON or ambiguous in any split, see \code{\link[=any_on]{any_on()}}),
-\code{genes}, \code{clusters}, \code{splits}, \code{band} and \code{flags_applied} (whether
-\code{flags} were given).
+\code{genes}, \code{clusters}, \code{splits}, \code{band}, \code{flags_applied} (whether
+\code{flags} were given), and \code{fold} (genes x clusters x splits, \code{NULL}
+without \code{fold}) and \code{ashman_D_lower} as given.
 }
 \description{
 Turns per-cluster probabilities of expression into ON, OFF and ambiguous

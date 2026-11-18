@@ -20,8 +20,9 @@ A binarized dataset (see \code{\link[=binarize]{binarize()}}).
 }
 \description{
 \code{\link[=binarize]{binarize()}} applied to a dataset, with the dataset's binarizer 1.1 flags
-(\code{layers/call_flags}) when it has them. The two most recent bands are
-cached with the dataset.
+(\code{layers/call_flags}) and ranking data (\code{layers/fold_ambient},
+\code{varm/call_ashman_D_lower}) when it has them. The two most recent bands
+are cached with the dataset.
 }
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")

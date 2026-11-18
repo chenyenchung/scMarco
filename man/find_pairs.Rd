@@ -38,8 +38,11 @@ does not depend on it.}
 \value{
 A data.frame with columns \code{cluster} (ID), \code{cluster_name} (\code{NA}
 when unnamed), \code{gene1}, \code{gene2}, \code{offtargets} (other clusters in which
-both genes are ON in any split) and \code{single_offtargets}, best first per
-cluster; invisibly when \code{out} is given.
+both genes are ON or ambiguous in any split), \code{separation},
+\code{target_fold}, \code{worst_leak}, \code{ashman_D_lower} (see \code{\link[=pair_offtargets]{pair_offtargets()}};
+\code{NA} for datasets without the binarizer 1.1 ranking data) and
+\code{single_offtargets}, best first per cluster; invisibly when \code{out} is
+given.
 }
 \description{
 Runs \code{\link[=pair_offtargets]{pair_offtargets()}} for every cluster of a dataset, e.g. to screen a

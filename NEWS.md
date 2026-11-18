@@ -45,6 +45,11 @@
   the log2 fold over ambient RNA, the per-gene values and the parameters with
   the dataset, and `validate_h5ad()` checks them. `binarize()` (`flags`) and
   `ds_binarize()` make the flagged calls ambiguous on top of the band.
+  `pair_offtargets()` and `find_pairs()` break ties among pairs with as many
+  off-targets by *separation* (the pair's target strength minus its worst
+  leak, in log2 fold over ambient RNA), then by the weaker gene's lower bound
+  of Ashman's D; each is its own column (`separation`, `target_fold`,
+  `worst_leak`, `ashman_D_lower`).
 * New synthetic example dataset `toy` (inst/extdata) with a cells file,
   reduction, cluster names and metadata, and mixture-model fits.
 * Fixed: a config without `gene_list` no longer fails to build the UI.

@@ -55,13 +55,20 @@
 #' @param flags Optional integer matrix shaped like `prob`: the flags of
 #'   [call_mixture()] (the sum of 1 chains disagree, 2 below the detection
 #'   floor, 4 above ambient RNA), as stored in `layers/call_flags`.
+#' @param fold Optional numeric matrix shaped like `prob`: each entry's log2
+#'   fold over ambient RNA (`layers/fold_ambient`), used by
+#'   [pair_offtargets()] to rank pairs.
+#' @param ashman_D_lower Optional numeric matrix, genes x splits: the lower
+#'   bound of each gene's Ashman's D (`varm/call_ashman_D_lower`), used by
+#'   [pair_offtargets()] to break ties.
 #'
 #' @return An object of class `scmarco_binarized`: a list with the logical
 #'   arrays `on` and `ambiguous` (genes x clusters x splits), the logical
 #'   matrices `present` (clusters x splits), `bimodal` (genes x splits) and
 #'   `anyon` (genes x clusters: ON or ambiguous in any split, see [any_on()]),
-#'   `genes`, `clusters`, `splits`, `band` and `flags_applied` (whether
-#'   `flags` were given).
+#'   `genes`, `clusters`, `splits`, `band`, `flags_applied` (whether
+#'   `flags` were given), and `fold` (genes x clusters x splits, `NULL`
+#'   without `fold`) and `ashman_D_lower` as given.
 #' @param margin Deprecated: the former confidence margin, `0.5 - band`.
 #' @examples
 #' prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,
@@ -73,7 +80,8 @@
 #' b$ambiguous[, , "adult"]
 #' @export
 binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
-                     band, bimodal = NULL, flags = NULL, margin = NULL) {
+                     band, bimodal = NULL, flags = NULL, fold = NULL,
+                     ashman_D_lower = NULL, margin = NULL) {
     band <- band_from_margin(if (missing(band)) NULL else band, margin)
     stopifnot(
         nrow(prob) == length(obs_split),
@@ -134,13 +142,22 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
     }
     dim(on) <- dim(ambiguous) <- c(length(genes), n_cl, length(splits))
     dimnames(on) <- dimnames(ambiguous) <- list(genes, clusters, splits)
+    fold_arr <- NULL
+    if (!is.null(fold)) {
+        stopifnot(identical(dim(fold), dim(prob)))
+        fold_arr <- matrix(NA_real_, length(genes), n_cl * length(splits))
+        fold_arr[, col] <- t(fold)
+        dim(fold_arr) <- c(length(genes), n_cl, length(splits))
+        dimnames(fold_arr) <- list(genes, clusters, splits)
+    }
 
     structure(
         list(
             on = on, ambiguous = ambiguous, present = present, bimodal = bimodal,
             anyon = anyon_matrix(on, ambiguous),
             genes = genes, clusters = clusters, splits = splits, band = band,
-            flags_applied = !is.null(flags)
+            flags_applied = !is.null(flags), fold = fold_arr,
+            ashman_D_lower = ashman_D_lower
         ),
         class = "scmarco_binarized"
     )
@@ -181,6 +198,7 @@ restrict_clusters <- function(b, keep) {
     b$ambiguous <- b$ambiguous[, keep, , drop = FALSE]
     b$present <- b$present[keep, , drop = FALSE]
     if (!is.null(b$anyon)) b$anyon <- b$anyon[, keep, drop = FALSE]
+    if (!is.null(b$fold)) b$fold <- b$fold[, keep, , drop = FALSE]
     b$clusters <- keep
     b
 }
@@ -418,7 +436,62 @@ top_per_cluster_capped <- function(tbl, n, max_genes) {
 
 empty_pairs <- function() {
     data.frame(gene1 = character(0), gene2 = character(0),
-        offtargets = integer(0), single_offtargets = integer(0))
+        offtargets = integer(0), separation = numeric(0), target_fold = numeric(0),
+        worst_leak = numeric(0), ashman_D_lower = numeric(0),
+        single_offtargets = integer(0))
+}
+
+pair_separation <- function(b, ident, cand, idx, chunk = 5000) {
+    # Separation of each pair idx (rows: indices into cand) in cluster ident,
+    # in log2 fold over ambient RNA (b$fold): target strength (the weaker
+    # gene's fold, lowest over the splits where both genes are ON in the
+    # target) minus the worst leak (over every other cluster and split where
+    # the pair is not ON or ambiguous together, i.e. at least one gene is
+    # OFF: the larger of the pair's smaller folds); and the weaker gene's
+    # Ashman's D lower bound (lowest over splits). NA where the data is
+    # missing.
+    n <- nrow(idx)
+    out <- data.frame(separation = rep(NA_real_, n), target_fold = NA_real_,
+        worst_leak = NA_real_, ashman_D_lower = NA_real_)
+    if (n == 0) return(out)
+    if (!is.null(b$ashman_D_lower)) {
+        d <- b$ashman_D_lower[cand, intersect(b$splits, colnames(b$ashman_D_lower)), drop = FALSE]
+        d[is.na(d)] <- Inf
+        d_gene <- apply(d, 1, min)
+        d_gene[!is.finite(d_gene)] <- NA
+        out$ashman_D_lower <- pmin(d_gene[idx[, 1]], d_gene[idx[, 2]])
+    }
+    if (is.null(b$fold)) return(out)
+    n_cl <- length(b$clusters)
+    n_col <- n_cl * length(b$splits)
+    flat <- function(a) matrix(a[cand, b$clusters, b$splits, drop = FALSE], length(cand), n_col)
+    fold <- flat(b$fold)
+    on <- flat(b$on)
+    nonoff <- on | flat(b$ambiguous)
+    ti <- match(ident, b$clusters)
+    target <- (seq_along(b$splits) - 1L) * n_cl + ti
+    leak_col <- as.vector(b$present) & !seq_len(n_col) %in% target
+    row_max <- function(m) {
+        m[is.na(m)] <- -Inf
+        v <- m[cbind(seq_len(nrow(m)), max.col(m, ties.method = "first"))]
+        v[!is.finite(v)] <- NA
+        v
+    }
+    for (start in seq(1, n, by = chunk)) {
+        k <- start:min(n, start + chunk - 1L)
+        g1 <- idx[k, 1]
+        g2 <- idx[k, 2]
+        m <- pmin(fold[g1, , drop = FALSE], fold[g2, , drop = FALSE])
+        lk <- m
+        lk[(nonoff[g1, , drop = FALSE] & nonoff[g2, , drop = FALSE]) |
+            rep(!leak_col, each = length(k))] <- NA
+        tg <- m[, target, drop = FALSE]
+        tg[!(on[g1, target, drop = FALSE] & on[g2, target, drop = FALSE])] <- NA
+        out$target_fold[k] <- -row_max(-tg)
+        out$worst_leak[k] <- row_max(lk)
+    }
+    out$separation <- out$target_fold - out$worst_leak
+    out
 }
 
 #' Rank gene pairs for a cluster
@@ -427,6 +500,18 @@ empty_pairs <- function() {
 #' number of other clusters in which both genes are ON or ambiguous (in any
 #' split): the off-targets of an intersectional (e.g. split-GAL4)
 #' combination.
+#'
+#' Ties are broken by the binarizer 1.1 ranking data when `b` has it (from
+#' [ds_binarize()] of a dataset binarized with [call_mixture()] tables):
+#' first by **separation**, the pair's target strength minus its worst leak,
+#' in log2 fold over ambient RNA (log2((UMIs + 1) / (expected ambient UMIs +
+#' 1))): the target strength is the weaker gene's fold in `ident` (lowest
+#' over the splits where both genes are ON there), and the worst leak is,
+#' over the other clusters and splits where at least one of the two genes is
+#' OFF, the largest of the pair's smaller folds (an intersectional driver
+#' needs both genes). Then by the weaker gene's lower bound of Ashman's D
+#' (10th percentile over the posterior), and last by the single-gene
+#' off-targets. A leak of about 1 or less is a single stray UMI.
 #'
 #' @param b A binarized dataset from [ds_binarize()] or [binarize()].
 #' @param ident One cluster ID.
@@ -437,9 +522,10 @@ empty_pairs <- function() {
 #' @param limit Maximum number of pairs returned.
 #' @param genes Genes to consider (default: every gene of `b`).
 #'
-#' @return A data.frame with columns `gene1`, `gene2`, `offtargets` and
-#'   `single_offtargets` (the off-targets of each gene on its own, summed;
-#'   used to break ties), best first.
+#' @return A data.frame with columns `gene1`, `gene2`, `offtargets`,
+#'   `separation`, `target_fold`, `worst_leak`, `ashman_D_lower` (`NA`
+#'   without the ranking data) and `single_offtargets` (the off-targets of
+#'   each gene on its own, summed), best first.
 #' @seealso [find_pairs()] to rank pairs for every cluster of a dataset.
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
@@ -479,11 +565,19 @@ pair_offtargets <- function(b, ident, required, min_n, first = NULL,
     vals <- as.integer(shared[idx])
     single <- diag(shared)
     single_sum <- as.integer(single[idx[, 1]] + single[idx[, 2]])
-    ord <- head(order(vals, single_sum, idx[, 1], idx[, 2], method = "radix"), limit)
+    sep <- pair_separation(b, ident, cand, idx)
+    # missing separation or D sort last among pairs with as many off-targets
+    ord <- head(order(vals, -sep$separation, -sep$ashman_D_lower, single_sum,
+        idx[, 1], idx[, 2], method = "radix", na.last = TRUE), limit)
+    round2 <- function(x) round(x, 2)
     data.frame(
         gene1 = cand[idx[ord, 1]],
         gene2 = cand[idx[ord, 2]],
         offtargets = vals[ord],
+        separation = round2(sep$separation[ord]),
+        target_fold = round2(sep$target_fold[ord]),
+        worst_leak = round2(sep$worst_leak[ord]),
+        ashman_D_lower = round2(sep$ashman_D_lower[ord]),
         single_offtargets = single_sum[ord]
     )
 }

@@ -2,7 +2,9 @@ test_that("find_pairs ranks pairs per cluster, the same on any number of cores",
   ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
   serial <- find_pairs(ex, top = 3)
   expect_named(serial, c("cluster", "cluster_name", "gene1", "gene2", "offtargets",
-    "single_offtargets"))
+    "separation", "target_fold", "worst_leak", "ashman_D_lower", "single_offtargets"))
+  # the example dataset has no binarizer 1.1 ranking data
+  expect_true(all(is.na(serial$separation)))
   expect_true(all(table(serial$cluster) <= 3))
   skip_on_os("windows")
   expect_identical(find_pairs(ex, top = 3, cores = 2), serial)

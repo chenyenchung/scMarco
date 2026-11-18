@@ -22,8 +22,11 @@
 #'
 #' @return A data.frame with columns `cluster` (ID), `cluster_name` (`NA`
 #'   when unnamed), `gene1`, `gene2`, `offtargets` (other clusters in which
-#'   both genes are ON in any split) and `single_offtargets`, best first per
-#'   cluster; invisibly when `out` is given.
+#'   both genes are ON or ambiguous in any split), `separation`,
+#'   `target_fold`, `worst_leak`, `ashman_D_lower` (see [pair_offtargets()];
+#'   `NA` for datasets without the binarizer 1.1 ranking data) and
+#'   `single_offtargets`, best first per cluster; invisibly when `out` is
+#'   given.
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' pairs <- find_pairs(ex, top = 3)
