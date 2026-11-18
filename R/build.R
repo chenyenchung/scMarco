@@ -232,9 +232,7 @@ seurat_to_h5ad <- function(seurat, dataset, out_dir = "data",
 
     if (!is.null(prob_tables)) {
         p <- assemble_prob(prob_tables, obs_split, obs_cluster, splits, genes)
-        add_probability_layer(clusters_path, p$prob, p$bimodal_by_split,
-            binarization_record("mixture model", attr(prob_tables, "source"), prob_version),
-            mixture = p$mixture, mixture_models = p$mixture_models)
+        write_prob(clusters_path, p, attr(prob_tables, "source"), prob_version)
         message(sprintf("Binarized %s (binarizer %s): %d genes bimodal in at least one %s",
             clusters_path, prob_version, sum(rowSums(p$bimodal_by_split) > 0), split_label))
     } else {
@@ -342,7 +340,12 @@ expand_genes <- function(x, genes) {
 #' the probability of expression, and QC columns, among them `exprType`
 #' (`"bimodal"` marks the genes used in that split) and, for the mixture
 #' model plot, `bimodal.on_level`, `bimodal.off_level`, `bimodal.sd` and
-#' `bimodal.pi`.
+#' `bimodal.pi`. Tables from [call_mixture()] also carry the binarizer 1.1
+#' data, which is stored too: the flags that make a call ambiguous
+#' (`layers/call_flags`), each cluster's log2 fold over ambient RNA
+#' (`layers/fold_ambient`), per-gene values (`varm/call_*`) and the
+#' parameters in use (`uns/scmarco/binarization/calls`); see
+#' `docs/expected_input.md`.
 #'
 #' The dataset records the binarizer version that made the tables
 #' (`uns/scmarco/binarization/version`): the one [call_mixture()] stamps on
@@ -395,9 +398,7 @@ add_probability <- function(clusters, prob, validate = TRUE, external = FALSE) {
     splits <- levels(ch$obs$split)
     p <- assemble_prob(tables, as.character(ch$obs$split), as.character(ch$obs$cluster),
         splits, ch$genes)
-    add_probability_layer(clusters, p$prob, p$bimodal_by_split,
-        binarization_record("mixture model", attr(tables, "source"), version),
-        mixture = p$mixture, mixture_models = p$mixture_models)
+    write_prob(clusters, p, attr(tables, "source"), version)
     message("Binarizer version: ", version, if (version == BINARIZER_EXTERNAL)
         " (the tables do not come from call_mixture() of a known scMarco)")
     groups <- split(names(p$mixture_models), p$mixture_models)

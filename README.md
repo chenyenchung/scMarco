@@ -82,10 +82,13 @@ that exists.
 | `var` | index = genes (sorted); optional `is_bimodal` (bool): genes used for marker finding |
 | `varm/bimodal_by_split` | optional genes × splits 0/1, column order in `uns/scmarco/bimodal_splits` |
 | `varm/mixture_on_level`, `mixture_off_level`, `mixture_sd`, `mixture_pi` | optional genes × splits mixture-model fit (ON and OFF component means, shared SD, ON weight), same column order; enables the Mixture model tab |
+| `varm/call_elpd_z`, `call_elpd_q`, `call_ashman_D`, `call_ashman_D_lower`, `call_spread_share` | optional genes × splits values from `call_mixture()` (binarizer 1.1), same column order: elpd z and its Benjamini-Hochberg q, Ashman's D (posterior median, 10th percentile), share of clusters whose chains disagree |
 | `layers/prob` | mixture-model probability of expression (NaN = not modeled / non-bimodal) |
+| `layers/call_flags` | optional integer flags from `call_mixture()` that make a call ambiguous, summed: 1 chains disagree, 2 below the detection floor (no ON), 4 above ambient RNA (no OFF) |
+| `layers/fold_ambient` | optional log2 fold of the UMIs over the expected ambient UMIs, log2((observed + 1) / (expected + 1)), used to rank pairs (NaN = no ambient summary) |
 | `layers/pct_pos` | optional fraction of cells with > 0 UMIs |
 | `layers/mean_lognorm` | optional cluster-average log-normalized expression (trend plot) |
-| `uns/scmarco` | `format_version`, `split_label`, `split_order`, `ordered_splits`, `source`, `binarization` (`method`, `source`, `date`, binarizer `version`, required once binarized; see `docs/expected_input.md`) |
+| `uns/scmarco` | `format_version`, `split_label`, `split_order`, `ordered_splits`, `source`, `binarization` (`method`, `source`, `date`, binarizer `version`, required once binarized; with `call_mixture()` tables also `calls`, its parameters per split and the contamination per library; see `docs/expected_input.md`) |
 
 A cluster absent from a split simply has no row, so missing values never mean
 two things.

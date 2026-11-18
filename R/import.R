@@ -12,6 +12,17 @@ QC_COLS <- c("diff.elpd", "diff.elpd.se", "elpd.z", "elpd.q", "ashman.D", "ashma
 MIXTURE_COLS <- c(on_level = "bimodal.on_level", off_level = "bimodal.off_level",
     sd = "bimodal.sd", pi = "bimodal.pi")
 
+# Binarizer 1.1 per-gene values kept per gene x split (varm/call_<name>):
+# evidence for two states (elpd z and its Benjamini-Hochberg q), Ashman's D
+# (posterior median and 10th percentile) and the share of clusters whose
+# chains disagree
+CALL_STAT_COLS <- c(elpd_z = "elpd.z", elpd_q = "elpd.q", ashman_D = "ashman.D",
+    ashman_D_lower = "ashman.D.lower", spread_share = "spread.share")
+# Parameters of call_mixture() recorded per split in
+# uns/scmarco/binarization/calls
+CALL_PARAMS <- c("summary", "bh_q", "min_D", "spread_cutoff", "reject_spread_frac",
+    "on_floor", "ambient_log2fc", "ambient_alpha", "ambient")
+
 fail <- function(...) stop(..., call. = FALSE)
 
 first_few <- function(x, n = 5) {
@@ -290,7 +301,11 @@ assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes,
     # n_genes x n_splits fit parameters (MIXTURE_COLS; NULL when a table lacks
     # them, NA for genes missing from a split's table), and mixture_models,
     # split -> the model it was fit in (from `models`; each split its own model
-    # by default). Applies the rules in
+    # by default), and calls, the binarizer 1.1 data of call_mixture() tables
+    # (NULL for tables without it): flags and fold_ambient (n_obs x n_genes,
+    # in obs order; flags 0 and fold NA where a table has no value), stats (a
+    # named list of n_genes x n_splits CALL_STAT_COLS) and params (split ->
+    # the table's "binarization" attribute). Applies the rules in
     # docs/expected_input.md: stops on errors, warns on gaps.
     given <- names(tables)
     if (anyDuplicated(given)) fail("Split(s) given twice: ", first_few(given[duplicated(given)]))
@@ -311,8 +326,27 @@ assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes,
         matrix(NA_real_, length(genes), length(splits), dimnames = list(genes, splits))
     })
     has_mixture <- TRUE
+    # binarizer 1.1 data: stored only when every split's table has it
+    with_calls <- vapply(tables[splits], function(t) !is.null(attr(t, "flags")), logical(1))
+    if (any(with_calls) && !all(with_calls)) {
+        warning("Only the tables of ", first_few(splits[with_calls]), " carry the call flags ",
+            "of call_mixture(); no flags are stored, so the binarizer 1.1 checks are not ",
+            "applied", call. = FALSE)
+    }
+    calls <- NULL
+    if (all(with_calls)) {
+        calls <- list(
+            flags = matrix(0L, length(obs_split), length(genes)),
+            fold = matrix(NA_real_, length(obs_split), length(genes)),
+            stats = lapply(CALL_STAT_COLS, function(col) {
+                matrix(NA_real_, length(genes), length(splits), dimnames = list(genes, splits))
+            }),
+            params = lapply(tables[splits], attr, "binarization"))
+    }
     for (s in splits) {
         tab <- tables[[s]]
+        flags_s <- attr(tab, "flags")
+        fold_s <- attr(tab, "fold_ambient")
         where <- paste0("split '", s, "': ")
         if (!is.data.frame(tab) && !is.matrix(tab)) {
             fail(where, "expected a data.frame with genes as row names, got ", class(tab)[1])
@@ -394,6 +428,25 @@ assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes,
         for (j in seq_along(cl_cols)) {
             prob[rows_s[match(target[j], present)], gi] <- values[, j]
         }
+        if (!is.null(calls)) {
+            # by name: a table can be a selection of call_mixture()'s genes
+            for (m in list(flags_s, fold_s)) {
+                if (!is.matrix(m) || !all(tab_genes %in% rownames(m)) ||
+                    !all(cl_cols %in% colnames(m))) {
+                    fail(where, "the flags or fold_ambient attribute does not cover the ",
+                        "table's genes and clusters")
+                }
+            }
+            for (j in seq_along(cl_cols)) {
+                row <- rows_s[match(target[j], present)]
+                calls$flags[row, gi] <- as.integer(flags_s[tab_genes, cl_cols[j]])
+                calls$fold[row, gi] <- fold_s[tab_genes, cl_cols[j]]
+            }
+            for (k in names(CALL_STAT_COLS)) {
+                col <- CALL_STAT_COLS[[k]]
+                if (col %in% colnames(tab)) calls$stats[[k]][gi, s] <- as.numeric(tab[[col]])
+            }
+        }
     }
     if (!has_mixture) {
         warning("Not every table has the columns ", paste(MIXTURE_COLS, collapse = ", "),
@@ -404,5 +457,42 @@ assemble_prob <- function(tables, obs_split, obs_cluster, splits, genes,
     known <- intersect(names(models), splits)
     mixture_models[known] <- models[known]
     list(prob = prob, bimodal_by_split = bimodal, mixture = mixture,
-        mixture_models = mixture_models)
+        mixture_models = mixture_models, calls = calls)
+}
+
+calls_record <- function(params, splits) {
+    # uns/scmarco/binarization/calls: call_mixture()'s parameters per split,
+    # each a vector in `splits` order (split labels may hold characters that
+    # HDF5 group names cannot), and the contamination per library in long
+    # form (rho_split, rho_library, rho); rho_source is "" for splits called
+    # without an ambient summary
+    # params: split -> the "binarization" attribute of its table
+    rec <- lapply(setNames(CALL_PARAMS, CALL_PARAMS), function(k) {
+        v <- lapply(params[splits], `[[`, k)
+        if (any(vapply(v, is.null, logical(1)))) fail("A call_mixture() table lacks the parameter ", k)
+        unlist(v, use.names = FALSE)
+    })
+    rec$ambient <- as.integer(rec$ambient)     # stored as 0/1
+    rec$rho_source <- vapply(params[splits], function(b) {
+        if (is.null(b$rho_source)) "" else b$rho_source
+    }, "", USE.NAMES = FALSE)
+    rho <- lapply(splits, function(s) unlist(params[[s]]$rho))
+    n <- lengths(rho)
+    if (sum(n) > 0) {
+        rec$rho_split <- rep(splits, n)
+        rec$rho_library <- unlist(lapply(rho, names), use.names = FALSE)
+        rec$rho <- unlist(rho, use.names = FALSE)
+    }
+    rec
+}
+
+write_prob <- function(path, p, source, version) {
+    # Write assemble_prob()'s result into a clusters file (add_probability(),
+    # seurat_to_h5ad()): probabilities, bimodality, fit parameters, the
+    # binarization record and, from call_mixture() tables, the binarizer 1.1
+    # data
+    record <- binarization_record("mixture model", source, version)
+    if (!is.null(p$calls)) record$calls <- calls_record(p$calls$params, colnames(p$bimodal_by_split))
+    add_probability_layer(path, p$prob, p$bimodal_by_split, record,
+        mixture = p$mixture, mixture_models = p$mixture_models, calls = p$calls)
 }

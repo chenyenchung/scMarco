@@ -170,3 +170,91 @@ test_that("migrated legacy datasets are recorded as external", {
   expect_identical(b$version, BINARIZER_EXTERNAL)
   expect_length(validate_h5ad(out)$errors, 0)
 })
+
+toy_tables_v11 <- function(path) {
+  # toy_tables() with the binarizer 1.1 data of call_mixture(): Male called
+  # with an ambient summary (two libraries), Female without
+  v <- SCMARCO_BINARIZER_VERSION
+  tabs <- toy_tables(path, c(Male = v, Female = v))
+  for (s in names(tabs)) {
+    tab <- tabs[[s]]
+    cl <- setdiff(colnames(tab), QC_COLS)
+    tab$elpd.z <- 5
+    tab$elpd.q <- 0.01
+    tab$ashman.D <- 3
+    tab$ashman.D.lower <- 2.5
+    tab$spread.share <- 0
+    flags <- matrix(0L, nrow(tab), length(cl), dimnames = list(rownames(tab), cl))
+    flags[1, 1] <- CALL_FLAG_CHAINS + CALL_FLAG_AMBIENT
+    fold <- matrix(round(seq_along(flags) / 10, 3), nrow(tab), dimnames = dimnames(flags))
+    if (s == "Female") fold[] <- NA
+    attr(tab, "flags") <- flags
+    attr(tab, "fold_ambient") <- fold
+    attr(tab, "binarization") <- list(summary = "mean", bh_q = 0.1, min_D = 2,
+      spread_cutoff = 0.5, reject_spread_frac = 0.1, on_floor = 0.05, ambient_log2fc = 3,
+      ambient_alpha = 1e-3, ambient = s == "Male",
+      rho = if (s == "Male") list(L1 = 0.05, L2 = 0.1),
+      rho_source = if (s == "Male") "given")
+    attr(tab, "scmarco_binarizer") <- v
+    tabs[[s]] <- tab
+  }
+  tabs
+}
+
+test_that("add_probability stores the binarizer 1.1 flags, folds, gene values and parameters", {
+  path <- toy_copy()
+  tabs <- toy_tables_v11(path)
+  suppressMessages(add_probability(path, tabs))
+  ch <- h5ad_open(path)
+  splits <- as.character(ch$uns$scmarco$bimodal_splits)
+  expect_true(all(c("call_flags", "fold_ambient") %in% ch$layers))
+  gene <- rownames(tabs$Male)[1]
+  first_cl <- setdiff(colnames(tabs$Male), QC_COLS)[1]
+  row <- which(ch$obs$split == "Male" & ch$obs$cluster == first_cl)
+  flags <- h5ad_layer(ch, "call_flags")
+  expect_identical(unname(flags[row, gene]), CALL_FLAG_CHAINS + CALL_FLAG_AMBIENT)
+  expect_equal(sum(flags), 2 * (CALL_FLAG_CHAINS + CALL_FLAG_AMBIENT))
+  fold <- h5ad_layer(ch, "fold_ambient")
+  expect_equal(unname(fold[row, gene]), 0.1)
+  expect_true(all(is.na(fold[ch$obs$split == "Female", ])))
+  D_lower <- h5ad_varm(ch, "call_ashman_D_lower")
+  expect_identical(dim(D_lower), c(length(ch$genes), length(splits)))
+  expect_true(all(D_lower == 2.5))
+  calls <- ch$uns$scmarco$binarization$calls
+  expect_equal(as.character(calls$summary), rep("mean", 2))
+  expect_equal(as.numeric(calls$bh_q), rep(0.1, 2))
+  expect_equal(as.integer(calls$ambient), as.integer(splits == "Male"))
+  expect_equal(as.character(calls$rho_source), ifelse(splits == "Male", "given", ""))
+  expect_equal(as.character(calls$rho_split), c("Male", "Male"))
+  expect_equal(as.character(calls$rho_library), c("L1", "L2"))
+  expect_equal(as.numeric(calls$rho), c(0.05, 0.1))
+  res <- validate_h5ad(path)
+  expect_length(res$errors, 0)
+  expect_false(any(grepl("call_flags", res$warnings)))
+
+  # flags out of range are caught
+  bad <- toy_copy()
+  file.copy(path, bad, overwrite = TRUE)
+  rhdf5::h5write(matrix(9L, 1, 1), bad, "layers/call_flags", index = list(1, 1))
+  expect_match(validate_h5ad(bad)$errors, "values that are not flags", all = FALSE)
+
+  # a selection of genes keeps its attributes, and each gene its own flags
+  sub <- tabs
+  sub$Male <- tabs$Male[2:nrow(tabs$Male), ]
+  sub$Female <- tabs$Female[2:nrow(tabs$Female), ]
+  suppressWarnings(suppressMessages(add_probability(path, sub)))
+  flags <- h5ad_layer(h5ad_open(path), "call_flags")
+  expect_identical(unname(flags[row, gene]), 0L)
+  expect_equal(sum(flags), 0)
+    # tables that are only partly 1.1 store no flags
+  mixed <- tabs
+  attr(mixed$Female, "flags") <- NULL
+  expect_warning(suppressMessages(add_probability(path, mixed)),
+                 "Only the tables of Male carry the call flags")
+  ch <- h5ad_open(path)
+  expect_false(any(c("call_flags", "fold_ambient") %in% ch$layers))
+  expect_false(any(startsWith(ch$varm, "call_")))
+  expect_null(ch$uns$scmarco$binarization$calls)
+  # ... and a 1.1 dataset without them is reported
+  expect_match(validate_h5ad(path)$warnings, "layers/call_flags is missing", all = FALSE)
+})

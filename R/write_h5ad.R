@@ -84,7 +84,7 @@ write_clusters_h5ad <- function(path, obs_split, obs_cluster, splits, clusters,
 }
 
 add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
-                                  mixture = NULL, mixture_models = NULL) {
+                                  mixture = NULL, mixture_models = NULL, calls = NULL) {
     check_binarization_record(binarization)
     # Binarize a clusters file in place: write layers/prob, var/is_bimodal,
     # varm/bimodal_by_split, varm/mixture_* and uns/scmarco/binarization.
@@ -98,6 +98,10 @@ add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
     # mixture_models: split -> the model it was fit in; splits sharing a model
     #   were fit together. Stored in uns/scmarco/mixture_models (in
     #   bimodal_splits order) alongside the parameters
+    # calls: optional binarizer 1.1 data (see assemble_prob()): flags and fold
+    #   (n_obs x n_genes, written as layers/call_flags and, when any value is
+    #   known, layers/fold_ambient) and stats (named list of n_genes x n_splits,
+    #   written as varm/call_<name>); the parameters go into binarization
     ad <- read_h5ad(path, as = "InMemoryAnnData")
     splits <- levels(ad$obs$split)
     genes <- rownames(ad$var)
@@ -108,6 +112,21 @@ add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
     dimnames(prob) <- list(rownames(ad$obs), genes)
     layers <- ad$layers
     layers$prob <- prob
+    # drop the 1.1 data of an earlier run with the probabilities they belong to
+    layers$call_flags <- NULL
+    layers$fold_ambient <- NULL
+    if (!is.null(calls)) {
+        flags <- calls$flags
+        storage.mode(flags) <- "integer"
+        dimnames(flags) <- dimnames(prob)
+        layers$call_flags <- flags
+        if (!all(is.na(calls$fold))) {
+            fold <- calls$fold
+            storage.mode(fold) <- "double"
+            dimnames(fold) <- dimnames(prob)
+            layers$fold_ambient <- fold
+        }
+    }
     ad$layers <- layers
 
     bim <- bimodal_by_split[genes, splits, drop = FALSE]
@@ -119,11 +138,16 @@ add_probability_layer <- function(path, prob, bimodal_by_split, binarization,
     varm <- if (is.null(ad$varm)) list() else ad$varm
     varm$bimodal_by_split <- unname(bim)
     # drop parameters of an earlier run so they never outlive their probabilities
-    varm <- varm[!startsWith(names(varm), "mixture_")]
+    varm <- varm[!startsWith(names(varm), "mixture_") & !startsWith(names(varm), "call_")]
     for (k in names(mixture)) {
         m <- mixture[[k]][genes, splits, drop = FALSE]
         storage.mode(m) <- "double"
         varm[[paste0("mixture_", k)]] <- unname(m)
+    }
+    for (k in names(calls$stats)) {
+        m <- calls$stats[[k]][genes, splits, drop = FALSE]
+        storage.mode(m) <- "double"
+        varm[[paste0("call_", k)]] <- unname(m)
     }
     ad$varm <- varm
 

@@ -310,6 +310,23 @@ splits, counting each split × cluster pair once. Datasets
 binarized before this was added get the tab once `add_probability()` is
 run again.
 
+Tables from `call_mixture()` (binarizer 1.1) also carry, as attributes, the
+flags that make a call ambiguous, each cluster's log2 fold over ambient RNA
+and the parameters in use; `add_probability()` stores them:
+
+| Where | What |
+|---|---|
+| `layers/call_flags` | integer per split × cluster × gene, the sum of 1 (chains disagree), 2 (below the detection floor: never ON) and 4 (above ambient RNA: never OFF); 0 where a table has no value |
+| `layers/fold_ambient` | log2((UMIs + 1) / (expected ambient UMIs + 1)), for ranking pairs; written when at least one split was called with an ambient summary, NaN elsewhere |
+| `varm/call_elpd_z`, `call_elpd_q`, `call_ashman_D`, `call_ashman_D_lower`, `call_spread_share` | genes × splits (`bimodal_splits` order): elpd z, its Benjamini-Hochberg q, Ashman's D (posterior median and 10th percentile), share of clusters whose chains disagree |
+| `uns/scmarco/binarization/calls` | the parameters of `call_mixture()` (`summary`, `bh_q`, `min_D`, `spread_cutoff`, `reject_spread_frac`, `on_floor`, `ambient_log2fc`, `ambient_alpha`, `ambient` as 0/1, `rho_source`), one value per split in `bimodal_splits` order; contamination per library as `rho_split`, `rho_library`, `rho` |
+
+They are stored only when every split's table has them (tables from outside
+scMarco, or subset tables, have none), and replaced or removed with the
+probabilities when `add_probability()` runs again. The validator checks their
+shapes and values, and warns when a dataset of the current binarizer lacks
+`layers/call_flags`.
+
 ### 2b. Legacy wide RDS (accepted)
 
 This is the format `add_probability_to_h5.R` read, and the output of one model
@@ -345,7 +362,7 @@ The output is described fully in the README ("Data format"). In short:
 
 | File | Contents |
 |---|---|
-| `<id>.clusters.h5ad` | obs = split × cluster pairs that exist (`split`, `cluster` ID, optional `cluster_name`, `n_cells`); layers `pct_pos`, `mean_lognorm` and, once binarized, `prob`; `var/is_bimodal`, `varm/bimodal_by_split` and `varm/mixture_*` once binarized; `uns/scmarco` metadata |
+| `<id>.clusters.h5ad` | obs = split × cluster pairs that exist (`split`, `cluster` ID, optional `cluster_name`, `n_cells`); layers `pct_pos`, `mean_lognorm` and, once binarized, `prob`; `var/is_bimodal`, `varm/bimodal_by_split`, `varm/mixture_*` and, from `call_mixture()` tables, `layers/call_flags`, `layers/fold_ambient` and `varm/call_*` once binarized; `uns/scmarco` metadata |
 | `<id>.cells.h5ad` | X = log-normalized cells × genes (CSC); obs = `barcode`, `split`, `cluster`; `obsm/X_*` reductions |
 
 | State | Has `layers/prob` | `uns/scmarco/binarization` | Validator | App |

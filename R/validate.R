@@ -115,7 +115,8 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
     } else if (!is.null(meta$binarization)) {
         err("uns/scmarco/binarization is present but layers/prob is missing")
     }
-    for (layer in intersect(c("prob", "pct_pos", "mean_lognorm"), ch$layers)) {
+    for (layer in intersect(c("prob", "pct_pos", "mean_lognorm", "call_flags", "fold_ambient"),
+                            ch$layers)) {
         m <- h5ad_layer(ch, layer)
         if (!identical(dim(m), c(nrow(ch$obs), length(ch$genes)))) {
             err("layers/", layer, " has shape ", paste(dim(m), collapse = "x"))
@@ -124,6 +125,10 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
         if (layer %in% c("prob", "pct_pos")) {
             bad <- sum(!is.na(m) & (m < 0 | m > 1))
             if (bad > 0) err("layers/", layer, ": ", bad, " values outside [0, 1]")
+        }
+        if (layer == "call_flags") {
+            bad <- sum(is.na(m) | m != round(m) | m < 0 | m > 7)
+            if (bad > 0) err("layers/call_flags: ", bad, " values that are not flags (0-7)")
         }
         if (all(is.na(m))) warn("layers/", layer, " is entirely missing")
     }
@@ -137,7 +142,7 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
             err("uns bimodal_splits does not match the obs split categories")
         }
     }
-    for (key in grep("^mixture_", ch$varm, value = TRUE)) {
+    for (key in grep("^(mixture|call)_", ch$varm, value = TRUE)) {
         m <- h5ad_varm(ch, key)
         if (nrow(m) != length(ch$genes) || ncol(m) != length(meta$bimodal_splits)) {
             err("varm/", key, " shape does not match genes x uns bimodal_splits")
@@ -146,6 +151,38 @@ validate_h5ad <- function(clusters, cells = "", stage = "binarized") {
     if (!is.null(meta$mixture_models) &&
         length(meta$mixture_models) != length(meta$bimodal_splits)) {
         err("uns mixture_models does not match uns bimodal_splits")
+    }
+    # binarizer 1.1 data (call_mixture() tables)
+    for (layer in intersect(c("call_flags", "fold_ambient"), ch$layers)) {
+        if (!binarized) err("layers/", layer, " is present but layers/prob is missing")
+    }
+    if ("fold_ambient" %in% ch$layers && !"call_flags" %in% ch$layers) {
+        err("layers/fold_ambient is present without layers/call_flags")
+    }
+    calls <- meta$binarization$calls
+    if ("call_flags" %in% ch$layers && is.null(calls)) {
+        err("layers/call_flags is present but uns/scmarco/binarization/calls is missing")
+    }
+    if (!is.null(calls)) {
+        n_split <- length(meta$bimodal_splits)
+        for (k in c(CALL_PARAMS, "rho_source")) {
+            if (length(calls[[k]]) != n_split) {
+                err("uns/scmarco/binarization/calls/", k, " does not have one value per split ",
+                    "of uns bimodal_splits")
+            }
+        }
+        n_rho <- length(calls$rho)
+        if (length(calls$rho_split) != n_rho || length(calls$rho_library) != n_rho) {
+            err("uns/scmarco/binarization/calls: rho, rho_split and rho_library differ in length")
+        } else if (!all(as.character(calls$rho_split) %in% as.character(meta$bimodal_splits))) {
+            err("uns/scmarco/binarization/calls/rho_split names splits not in uns bimodal_splits")
+        }
+    }
+    if (binarized && binarizer_status(meta$binarization$version) == "current" &&
+        !"call_flags" %in% ch$layers) {
+        warn("layers/call_flags is missing: calls are made without the binarizer ",
+            SCMARCO_BINARIZER_VERSION, " checks (chains, detection floor, ambient RNA); ",
+            "rerun add_probability() with tables from call_mixture()")
     }
     if (binarized && !"is_bimodal" %in% names(ch$var)) {
         warn("var/is_bimodal is missing: every gene will be used for marker finding")

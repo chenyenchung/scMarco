@@ -39,7 +39,12 @@ Each split's table has genes as row names, one column per cluster ID with
 the probability of expression, and QC columns, among them \code{exprType}
 (\code{"bimodal"} marks the genes used in that split) and, for the mixture
 model plot, \code{bimodal.on_level}, \code{bimodal.off_level}, \code{bimodal.sd} and
-\code{bimodal.pi}.
+\code{bimodal.pi}. Tables from \code{\link[=call_mixture]{call_mixture()}} also carry the binarizer 1.1
+data, which is stored too: the flags that make a call ambiguous
+(\code{layers/call_flags}), each cluster's log2 fold over ambient RNA
+(\code{layers/fold_ambient}), per-gene values (\verb{varm/call_*}) and the
+parameters in use (\code{uns/scmarco/binarization/calls}); see
+\code{docs/expected_input.md}.
 
 The dataset records the binarizer version that made the tables
 (\code{uns/scmarco/binarization/version}): the one \code{\link[=call_mixture]{call_mixture()}} stamps on
