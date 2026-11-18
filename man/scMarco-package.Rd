@@ -39,6 +39,11 @@ Useful links:
 \author{
 \strong{Maintainer}: Yen-Chung Chen \email{chenyenjung@gmail.com}
 
+Authors:
+\itemize{
+  \item Yen-Chung Chen \email{chenyenjung@gmail.com}
+}
+
 Other contributors:
 \itemize{
   \item Fred P. Davis (author and copyright holder of the original mixture model code (opticlobe), adapted in R/mixture_fit.R and inst/stan/; see inst/COPYRIGHTS) [contributor, copyright holder]
