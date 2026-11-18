@@ -24,7 +24,9 @@ A ggplot object.
 \description{
 One panel per cluster, one row per gene and one column per split. Gray is
 ambiguous (or non-bimodal), and a cross marks a cluster with no cells in
-that split.
+that split. A letter on a gray tile says which binarizer 1.1 check made
+the call ambiguous (c: chains disagree, d: below the detection floor, a:
+above ambient RNA).
 }
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")

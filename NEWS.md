@@ -49,7 +49,10 @@
   off-targets by *separation* (the pair's target strength minus its worst
   leak, in log2 fold over ambient RNA), then by the weaker gene's lower bound
   of Ashman's D; each is its own column (`separation`, `target_fold`,
-  `worst_leak`, `ashman_D_lower`).
+  `worst_leak`, `ashman_D_lower`). In the app, a letter on a gray tile says which check
+  made a call ambiguous, a worst leak of 1 or less shows as noise, the
+  ranking columns appear only for datasets that have the data, and the
+  sidebar says whether the dataset's call checks are applied.
 * New synthetic example dataset `toy` (inst/extdata) with a cells file,
   reduction, cluster names and metadata, and mixture-model fits.
 * Fixed: a config without `gene_list` no longer fails to build the UI.

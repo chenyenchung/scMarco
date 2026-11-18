@@ -104,6 +104,12 @@ find_exp_server <- function(id, ctx) {
                 rank_cols <- c("separation", "target_fold", "worst_leak", "ashman_D_lower")
                 empty <- rank_cols[vapply(tbl[rank_cols], function(v) all(is.na(v)), logical(1))]
                 tbl <- tbl[setdiff(names(labels), empty)]
+                if (!is.null(tbl$worst_leak)) {
+                    # a log2 fold of about 1 over ambient is a single stray UMI
+                    tbl$worst_leak <- ifelse(is.na(tbl$worst_leak), NA_character_,
+                        ifelse(tbl$worst_leak <= 1, "\u2264 1 (noise)",
+                            formatC(tbl$worst_leak, format = "f", digits = 2)))
+                }
                 names(tbl) <- labels[names(tbl)]
                 tagList(
                     tags$h4(style = "margin: 10px", "Best pairs for ", cluster_label(res$ds, res$ident)),

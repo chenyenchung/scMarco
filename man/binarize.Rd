@@ -54,8 +54,10 @@ arrays \code{on} and \code{ambiguous} (genes x clusters x splits), the logical
 matrices \code{present} (clusters x splits), \code{bimodal} (genes x splits) and
 \code{anyon} (genes x clusters: ON or ambiguous in any split, see \code{\link[=any_on]{any_on()}}),
 \code{genes}, \code{clusters}, \code{splits}, \code{band}, \code{flags_applied} (whether
-\code{flags} were given), and \code{fold} (genes x clusters x splits, \code{NULL}
-without \code{fold}) and \code{ashman_D_lower} as given.
+\code{flags} were given), \code{flagged} (genes x clusters x splits integers: the
+flag that made a call ambiguous, 1, 2 or 4, else 0; \code{NULL} without
+\code{flags}), and \code{fold} (genes x clusters x splits, \code{NULL} without \code{fold})
+and \code{ashman_D_lower} as given.
 }
 \description{
 Turns per-cluster probabilities of expression into ON, OFF and ambiguous

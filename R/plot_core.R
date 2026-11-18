@@ -54,6 +54,30 @@ tile_layers <- function(df, box_size) {
     )
 }
 
+# One letter per flag reason on ambiguous tiles, explained in the caption
+FLAG_LETTERS <- c("chains disagree" = "c", "below detection floor" = "d",
+    "above ambient" = "a")
+
+flag_label_layer <- function(df, box_size) {
+    # df needs x, y, reason; letters on tiles a binarizer 1.1 flag made ambiguous
+    df <- df[!is.na(df$reason) & df$reason != "", , drop = FALSE]
+    if (nrow(df) == 0) return(NULL)
+    df$letter <- FLAG_LETTERS[df$reason]
+    geom_text(data = df, aes(x = x, y = y, label = letter), color = "#1B1B1B",
+        size = max(3, box_size / 4), fontface = "italic", inherit.aes = FALSE)
+}
+
+flag_caption <- function(df) {
+    # Caption for the letters drawn by flag_label_layer(), or NULL
+    used <- intersect(names(FLAG_LETTERS), df$reason)
+    if (length(used) == 0) return(NULL)
+    text <- c("chains disagree" = "the fit's chains disagree",
+        "below detection floor" = "too few cells detect the gene to call it ON",
+        "above ambient" = "more UMIs than ambient RNA explains, so not OFF")
+    paste0("Ambiguous because ", paste(sprintf("%s: %s", FLAG_LETTERS[used], text[used]),
+        collapse = "; "), ".")
+}
+
 pct_label_layer <- function(df, box_size) {
     # df needs x, y, pct (0-1); labels are drawn only where given
     df <- df[!is.na(df$pct), , drop = FALSE]
@@ -71,7 +95,9 @@ pct_label_layer <- function(df, box_size) {
 #'
 #' One panel per cluster, one row per gene and one column per split. Gray is
 #' ambiguous (or non-bimodal), and a cross marks a cluster with no cells in
-#' that split.
+#' that split. A letter on a gray tile says which binarizer 1.1 check made
+#' the call ambiguous (c: chains disagree, d: below the detection floor, a:
+#' above ambient RNA).
 #'
 #' @param ds A dataset from [ds_load()].
 #' @param b A binarized dataset from [ds_binarize()] or [binarize()].
@@ -100,7 +126,9 @@ onoff_plot <- function(ds, b, genes, idents, show_pct = FALSE) {
 
     p <- ggplot(df, aes(x = x, y = y)) +
         tile_layers(df, box_size) +
+        flag_label_layer(df, box_size) +
         facet_wrap(~panel) +
+        labs(caption = flag_caption(df)) +
         theme_scmarco_tiles()
 
     if (show_pct && ds$has_pct) {
@@ -163,7 +191,8 @@ coexp_data <- function(ds, b, genes) {
                 ifelse(tapply(st$state == "Expressed", key, all)[co_key],
                     "Expressed", "Not expressed")))
     )
-    df <- rbind(st[, c("gene", "cluster", "split", "state")], co_df)
+    co_df$reason <- ""
+    df <- rbind(st[, c("gene", "cluster", "split", "state", "reason")], co_df)
 
     # Order clusters: most splits co-expressed at the top
     n_co <- tapply(co_df$state == "Expressed", co_df$cluster, sum)
@@ -230,7 +259,9 @@ coexp_plot <- function(ds, b, genes, show_pct = FALSE) {
 
     p <- ggplot(df, aes(x = x, y = y)) +
         tile_layers(df, box_size) +
+        flag_label_layer(df, box_size) +
         facet_wrap(~gene) +
+        labs(caption = flag_caption(df)) +
         theme_scmarco_tiles()
 
     if (show_pct) {

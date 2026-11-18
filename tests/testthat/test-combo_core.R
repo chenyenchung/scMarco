@@ -47,10 +47,22 @@ test_that("binarize makes the calls flagged by the binarizer 1.1 ambiguous", {
   expect_identical(unname(b$ambiguous["g", , "s"]),
                    c(TRUE, TRUE, FALSE, TRUE, FALSE, TRUE, TRUE, FALSE))
   expect_true(b$flags_applied)
+  # the flag that decided is kept for display
+  expect_identical(unname(b$flagged["g", , "s"]),
+                   c(CALL_FLAG_CHAINS, CALL_FLAG_DETECTION, 0L, CALL_FLAG_CHAINS, 0L,
+                     CALL_FLAG_AMBIENT, 0L, 0L))
+  st <- state_table(b, "g")
+  expect_identical(st$reason, c("chains disagree", "below detection floor", "", "chains disagree",
+                                "", "above ambient", "", ""))
+  p <- onoff_plot(list(splits = "s", cluster_labels = setNames(cl, cl), has_pct = FALSE),
+                  b, "g", cl)
+  expect_match(p$labels$caption, "c: the fit's chains disagree.*d: too few cells.*a: more UMIs")
   # without flags only the band decides
   b0 <- binarize(prob, rep("s", 8), cl, "s", cl, band = 0.3)
   expect_identical(unname(b0$on["g", , "s"]), rep(c(TRUE, FALSE), c(3, 5)))
   expect_false(b0$flags_applied)
+  expect_null(b0$flagged)
+  expect_true(all(state_table(b0, "g")$reason == ""))
   expect_error(binarize(prob, rep("s", 8), cl, "s", cl, band = 0.3, flags = flags[-1, , drop = FALSE]))
 })
 

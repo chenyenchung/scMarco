@@ -135,7 +135,10 @@ scmarco_app <- function(config = Sys.getenv("SCMARCO_CONFIG", "config.yaml"),
                 ),
                 helpText(
                     "ON if P(On) \u2265 50% + band, OFF if P(On) \u2264 50% \u2212 band;",
-                    "in between is ambiguous (gray) and never counts as ON or OFF."
+                    "in between is ambiguous (gray) and never counts as ON or OFF.",
+                    "Datasets from binarizer 1.1 also make calls ambiguous that its",
+                    "checks flag (chains disagree, too few cells detecting the gene",
+                    "for ON, more UMIs than ambient RNA explains for OFF)."
                 ),
                 uiOutput("splits_selector"),
                 tabsetPanel(
@@ -220,9 +223,13 @@ scmarco_server <- function(input, output, session, config) {
     output$dataset_versions <- renderUI({
         b <- ds()$binarization
         v <- b$version
-        helpText(sprintf("Binarizer %s%s; schema %s", v,
+        helpText(sprintf("Binarizer %s%s; schema %s%s", v,
             if (identical(v, BINARIZER_EXTERNAL)) " (tables not from scMarco's binarizer)" else "",
-            SCMARCO_FORMAT_VERSION))
+            SCMARCO_FORMAT_VERSION,
+            if (!is.null(ds()$flags)) {
+                paste0("; call checks applied",
+                    if (!is.null(ds()$fold)) ", pairs ranked by separation over ambient RNA")
+            } else ""))
     })
 
     output$meta_filter <- renderUI({

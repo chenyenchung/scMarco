@@ -67,8 +67,10 @@
 #'   matrices `present` (clusters x splits), `bimodal` (genes x splits) and
 #'   `anyon` (genes x clusters: ON or ambiguous in any split, see [any_on()]),
 #'   `genes`, `clusters`, `splits`, `band`, `flags_applied` (whether
-#'   `flags` were given), and `fold` (genes x clusters x splits, `NULL`
-#'   without `fold`) and `ashman_D_lower` as given.
+#'   `flags` were given), `flagged` (genes x clusters x splits integers: the
+#'   flag that made a call ambiguous, 1, 2 or 4, else 0; `NULL` without
+#'   `flags`), and `fold` (genes x clusters x splits, `NULL` without `fold`)
+#'   and `ashman_D_lower` as given.
 #' @param margin Deprecated: the former confidence margin, `0.5 - band`.
 #' @examples
 #' prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,
@@ -113,6 +115,11 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
         # NA probabilities (no call) stay OFF
         to_unsure <- (hit & (chains | has(CALL_FLAG_DETECTION))) |
             (off & !is.na(prob) & (chains | has(CALL_FLAG_AMBIENT)))
+        # the flag that decided, for display: chains first
+        reason <- matrix(0L, nrow(prob), ncol(prob))
+        reason[to_unsure & hit] <- CALL_FLAG_DETECTION
+        reason[to_unsure & off] <- CALL_FLAG_AMBIENT
+        reason[to_unsure & chains] <- CALL_FLAG_CHAINS
         hit <- hit & !to_unsure
         off <- off & !to_unsure
         unsure <- unsure | to_unsure
@@ -127,6 +134,11 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
     ambiguous <- on
     on[, col] <- t(hit)
     ambiguous[, col] <- t(unsure)
+    flagged <- NULL
+    if (!is.null(flags)) {
+        flagged <- matrix(0L, length(genes), n_cl * length(splits))
+        flagged[, col] <- t(reason)
+    }
 
     if (is.null(bimodal)) {
         bimodal <- matrix(
@@ -139,9 +151,14 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
         by_col <- bimodal[, rep(seq_along(splits), each = n_cl), drop = FALSE]
         on <- on & by_col
         ambiguous <- ambiguous & by_col
+        if (!is.null(flagged)) flagged[!by_col] <- 0L
     }
     dim(on) <- dim(ambiguous) <- c(length(genes), n_cl, length(splits))
     dimnames(on) <- dimnames(ambiguous) <- list(genes, clusters, splits)
+    if (!is.null(flagged)) {
+        dim(flagged) <- dim(on)
+        dimnames(flagged) <- dimnames(on)
+    }
     fold_arr <- NULL
     if (!is.null(fold)) {
         stopifnot(identical(dim(fold), dim(prob)))
@@ -156,7 +173,7 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
             on = on, ambiguous = ambiguous, present = present, bimodal = bimodal,
             anyon = anyon_matrix(on, ambiguous),
             genes = genes, clusters = clusters, splits = splits, band = band,
-            flags_applied = !is.null(flags), fold = fold_arr,
+            flags_applied = !is.null(flags), flagged = flagged, fold = fold_arr,
             ashman_D_lower = ashman_D_lower
         ),
         class = "scmarco_binarized"
@@ -199,6 +216,7 @@ restrict_clusters <- function(b, keep) {
     b$present <- b$present[keep, , drop = FALSE]
     if (!is.null(b$anyon)) b$anyon <- b$anyon[, keep, drop = FALSE]
     if (!is.null(b$fold)) b$fold <- b$fold[, keep, , drop = FALSE]
+    if (!is.null(b$flagged)) b$flagged <- b$flagged[, keep, , drop = FALSE]
     b$clusters <- keep
     b
 }
@@ -618,9 +636,12 @@ combo_offtarget_clusters <- function(b, genes, exclude = character(0)) {
 #' @param genes Gene names.
 #' @param clusters Cluster IDs (default: every cluster of `b`).
 #'
-#' @return A data.frame with columns `gene`, `cluster`, `split` and `state`,
+#' @return A data.frame with columns `gene`, `cluster`, `split`, `state`,
 #'   one of `"Expressed"`, `"Not expressed"`, `"Ambiguous"`, `"Non-bimodal"`
-#'   or `"Absent"` (the cluster has no cells in the split).
+#'   or `"Absent"` (the cluster has no cells in the split), and `reason`, why
+#'   an ambiguous call is ambiguous when a binarizer 1.1 flag made it so
+#'   (`"chains disagree"`, `"below detection floor"`, `"above ambient"`; `""`
+#'   otherwise).
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
@@ -646,5 +667,15 @@ state_table <- function(b, genes, clusters = b$clusters) {
             ifelse(unsure, "Ambiguous",
                 ifelse(on, "Expressed", "Not expressed")))
     )
+    grid$reason <- ""
+    if (!is.null(b$flagged)) {
+        f <- b$flagged[cbind(gi, ci, si)]
+        grid$reason[grid$state == "Ambiguous"] <-
+            unname(FLAG_REASONS[as.character(f[grid$state == "Ambiguous"])])
+    }
     grid
 }
+
+# Why a flagged call is ambiguous (state_table(), the tile plots)
+FLAG_REASONS <- c(`0` = "", `1` = "chains disagree", `2` = "below detection floor",
+    `4` = "above ambient")

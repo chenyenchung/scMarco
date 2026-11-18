@@ -14,9 +14,12 @@ state_table(b, genes, clusters = b$clusters)
 \item{clusters}{Cluster IDs (default: every cluster of \code{b}).}
 }
 \value{
-A data.frame with columns \code{gene}, \code{cluster}, \code{split} and \code{state},
+A data.frame with columns \code{gene}, \code{cluster}, \code{split}, \code{state},
 one of \code{"Expressed"}, \code{"Not expressed"}, \code{"Ambiguous"}, \code{"Non-bimodal"}
-or \code{"Absent"} (the cluster has no cells in the split).
+or \code{"Absent"} (the cluster has no cells in the split), and \code{reason}, why
+an ambiguous call is ambiguous when a binarizer 1.1 flag made it so
+(\code{"chains disagree"}, \code{"below detection floor"}, \code{"above ambient"}; \code{""}
+otherwise).
 }
 \description{
 Per-gene ON/OFF states in long form
