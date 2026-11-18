@@ -171,7 +171,10 @@ qc_report <- function(fit, table, ambient = NULL, file = NULL, band = 0.3,
         if (binarizer_status(fit$binarizer_version) == "older") {
             sprintf("The fit is from binarizer %s; refitting with binarizer %s is recommended.", fit$binarizer_version, SCMARCO_BINARIZER_VERSION)
         },
-        if (!isTRUE(params$ambient)) "No ambient summary was given to call_mixture(): the detection and ambient checks did not run.")
+        if (!isTRUE(params$ambient)) "No ambient summary was given to call_mixture(): the detection and ambient checks did not run.",
+        if (!is.null(ambient$cluster_library_cells) && startsWith(ambient$rho_source, "decontX")) {
+            small_library_note(ambient$cluster_library_cells)
+        })
 
     rho <- params$rho
     settings <- list(binarizer = fit$binarizer_version, prior = st$prior %||% "",
@@ -207,6 +210,9 @@ qc_report <- function(fit, table, ambient = NULL, file = NULL, band = 0.3,
             single_sample_clusters = sum(n_rep == 1),
             cells_per_cluster = if (!is.null(n_cells)) qc_quant(as.numeric(n_cells), c(0, 0.5, 1)),
             genes = length(genes),
+            cells_per_library = if (!is.null(ambient$cluster_library_cells)) {
+                as.list(qc_num(colSums(ambient$cluster_library_cells)))
+            },
             umis_per_library = if (!is.null(ambient)) as.list(qc_num(colSums(ambient$cluster_library_umi)))),
         warnings = as.list(warnings),
         settings = lapply(settings, qc_num),
@@ -393,8 +399,9 @@ qc_write_html <- function(qc, plots, file) {
         " &middot; QC report version ", qc$qc_report_version, " &middot; ", qc$generated,
         "</p></header>",
         sec("Dataset", paste0(qc_table(ds_rows, QC_LABELS$dataset),
-            if (!is.null(ds$umis_per_library)) paste0("<h3>UMIs per library</h3>",
-                qc_table(ds$umis_per_library, header = c("Library", "UMIs"))),
+            if (!is.null(ds$umis_per_library)) paste0("<h3>Libraries</h3>",
+                qc_table(ds$umis_per_library, header = c("Library", "UMIs", "Cells"),
+                    extra = if (!is.null(ds$cells_per_library)) vapply(ds$cells_per_library, qc_fmt, ""))),
             warn)),
         sec("Settings in use", qc_table(s, header = c("Setting", "Value", "What is this"),
             extra = QC_SETTING_INFO)),

@@ -21,6 +21,7 @@ test_that("ambient_summary counts UMIs, detection and library totals per cluster
   expect_equal(a$n_cells, c(A = 6, B = 6))
   expect_equal(a$cluster_library_umi["A", "L1"], sum(m[, c(1, 3, 5)]))
   expect_equal(sum(a$cluster_library_umi), sum(m))
+  expect_equal(a$cluster_library_cells, matrix(3, 2, 2, dimnames = list(c("A", "B"), c("L1", "L2"))))
   expect_equal(a$library_share[, "L2"], rowSums(m[, seq(2, 12, 2)]) / sum(m[, seq(2, 12, 2)]))
   expect_equal(a$rho, c(L1 = 0.1, L2 = 0.1))
   expect_identical(a$rho_source, "given")
@@ -62,4 +63,16 @@ test_that("ambient_summary estimates each library's contamination with DecontX",
   expect_named(a$rho, c("L1", "L2"))
   expect_true(all(a$rho >= 0 & a$rho < 1))
   expect_match(a$rho_source, "^decontX \\(celda ")
+})
+
+test_that("libraries with few cells per cluster are named in a warning", {
+  # L1: 40 cells over 2 clusters; L2: 12 cells over 4 clusters
+  cells <- matrix(c(20, 20, 0, 0, 3, 3, 3, 3), 4, 2,
+                  dimnames = list(c("A", "B", "C", "D"), c("L1", "L2")))
+  note <- small_library_note(cells)
+  expect_match(note, "^1 of 2 libraries have fewer than 10 cells per cluster")
+  expect_match(note, "L2: 12 cells over 4 clusters")
+  expect_false(grepl("L1:", note))
+  expect_match(note, "give the suspension as library")
+  expect_null(small_library_note(cells[, "L1", drop = FALSE]))
 })

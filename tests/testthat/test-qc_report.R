@@ -41,6 +41,7 @@ test_that("qc_report counts genes and calls as binarize() makes them", {
   expect_identical(qc$calls$no_call, 3L)
   expect_identical(qc$dataset$cells, 12L)
   expect_named(qc$dataset$umis_per_library, "1")
+  expect_identical(qc$dataset$cells_per_library, list(`1` = 12L))
   expect_identical(qc$settings$n_chains_bimodal, 8L)
   expect_identical(qc$settings$band, 0.3)
   expect_identical(qc$ambient$rho, list(`1` = 0.01))

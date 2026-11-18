@@ -44,7 +44,9 @@
   binarized get no calls, and the dataset-wide ON/OFF distributions are gone.
   P(On) is the posterior mean. Flags mark calls whose chains disagree, ON
   calls below a detection floor and OFF calls above ambient RNA
-  (`ambient_summary()`, DecontX per library). Every cut is an argument and is
+  (`ambient_summary()`, DecontX per library: the cell suspension each 10x
+  channel was loaded from; it warns about libraries with fewer than 10 cells
+  per cluster, whose contamination DecontX tends to underestimate). Every cut is an argument and is
   printed. mclust is no longer needed. `add_probability()` stores the flags,
   the log2 fold over ambient RNA, the per-gene values and the parameters with
   the dataset, and `validate_h5ad()` checks them. `binarize()` (`flags`) and

@@ -13,8 +13,8 @@ fitted: the totals and DecontX need them all.}
 
 \item{cluster}{Cluster ID of each cell (column of \code{counts}).}
 
-\item{library}{10x library (channel) of each cell; \code{NULL} puts every cell
-in one library.}
+\item{library}{Library of each cell: the cell suspension its 10x channel
+was loaded from (see Details); \code{NULL} puts every cell in one library.}
 
 \item{rho}{Contamination per library, skipping DecontX: one number for
 every library, or a vector named by library. \code{NULL} estimates it.}
@@ -25,7 +25,7 @@ every library, or a vector named by library. \code{NULL} estimates it.}
 An \code{scmarco_ambient} list: \code{umi} and \code{detect} (genes x clusters:
 UMIs, and share of the cluster's cells with at least one UMI), \code{n_cells}
 (per cluster), \code{cluster_library_umi} (clusters x libraries: UMIs of all
-genes), \code{library_share} (genes x libraries: the gene's share of the
+genes), \code{cluster_library_cells} (clusters x libraries: cells), \code{library_share} (genes x libraries: the gene's share of the
 library's UMIs), \code{rho} (per library), \code{rho_source} (\code{"decontX"} with
 the celda version, or \code{"given"}), \code{genes}, \code{clusters} and \code{libraries}.
 }
@@ -44,6 +44,19 @@ The expected ambient UMIs of gene g in cluster c are
 share[g, l] x umi[c, l]}: library l's contamination, times gene g's share
 of library l's UMIs (its ambient profile), times cluster c's UMIs from
 library l.
+
+\strong{Which library.} Ambient RNA comes from the cell suspension, so give as
+\code{library} the suspension each cell's 10x channel was loaded from: the
+channel when every channel had its own suspension, otherwise the
+suspension shared by several channels. In a merged Seurat object,
+\code{orig.ident} often pools several suspensions into one value; check it.
+DecontX estimates each library's contamination from that library's cells
+alone, and a library with few cells per cluster gives it little to tell
+cell-type expression from ambient RNA, so the contamination tends to be
+underestimated and the ambient check flags too many OFF calls. When it
+estimates the contamination, \code{ambient_summary()} warns about libraries
+with fewer than 10 cells per cluster on average (counting the clusters
+the library has cells of).
 }
 \examples{
 set.seed(1)

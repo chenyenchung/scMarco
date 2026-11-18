@@ -39,12 +39,25 @@ as_count_matrix <- function(counts) {
 #' of library l's UMIs (its ambient profile), times cluster c's UMIs from
 #' library l.
 #'
+#' **Which library.** Ambient RNA comes from the cell suspension, so give as
+#' `library` the suspension each cell's 10x channel was loaded from: the
+#' channel when every channel had its own suspension, otherwise the
+#' suspension shared by several channels. In a merged Seurat object,
+#' `orig.ident` often pools several suspensions into one value; check it.
+#' DecontX estimates each library's contamination from that library's cells
+#' alone, and a library with few cells per cluster gives it little to tell
+#' cell-type expression from ambient RNA, so the contamination tends to be
+#' underestimated and the ambient check flags too many OFF calls. When it
+#' estimates the contamination, `ambient_summary()` warns about libraries
+#' with fewer than 10 cells per cluster on average (counting the clusters
+#' the library has cells of).
+#'
 #' @param counts Raw counts of one split's cells, genes x cells (a matrix or
 #'   sparse Matrix with gene row names). Use every gene, not only the ones
 #'   fitted: the totals and DecontX need them all.
 #' @param cluster Cluster ID of each cell (column of `counts`).
-#' @param library 10x library (channel) of each cell; `NULL` puts every cell
-#'   in one library.
+#' @param library Library of each cell: the cell suspension its 10x channel
+#'   was loaded from (see Details); `NULL` puts every cell in one library.
 #' @param rho Contamination per library, skipping DecontX: one number for
 #'   every library, or a vector named by library. `NULL` estimates it.
 #' @param genes Genes to keep the per-cluster counts of (default: all).
@@ -52,7 +65,7 @@ as_count_matrix <- function(counts) {
 #' @return An `scmarco_ambient` list: `umi` and `detect` (genes x clusters:
 #'   UMIs, and share of the cluster's cells with at least one UMI), `n_cells`
 #'   (per cluster), `cluster_library_umi` (clusters x libraries: UMIs of all
-#'   genes), `library_share` (genes x libraries: the gene's share of the
+#'   genes), `cluster_library_cells` (clusters x libraries: cells), `library_share` (genes x libraries: the gene's share of the
 #'   library's UMIs), `rho` (per library), `rho_source` (`"decontX"` with
 #'   the celda version, or `"given"`), `genes`, `clusters` and `libraries`.
 #' @seealso [call_mixture()], [make_pseudobulk()].
@@ -95,12 +108,16 @@ ambient_summary <- function(counts, cluster, library = NULL, rho = NULL, genes =
     dimnames(umi) <- dimnames(detect) <- list(genes, clusters)
     cluster_library_umi <- as.matrix(Matrix::crossprod(ind, lib_ind * total))
     dimnames(cluster_library_umi) <- list(clusters, libraries)
+    cluster_library_cells <- as.matrix(Matrix::crossprod(ind, lib_ind))
+    dimnames(cluster_library_cells) <- list(clusters, libraries)
     lib_total <- Matrix::colSums(lib_ind * total)
     library_share <- sweep(as.matrix(sub %*% lib_ind), 2, lib_total, "/")
     dimnames(library_share) <- list(genes, libraries)
 
     if (is.null(rho)) {
         need_packages("celda", "ambient_summary()")
+        note <- small_library_note(cluster_library_cells)
+        if (!is.null(note)) warning(note, call. = FALSE)
         keep <- Matrix::rowSums(counts) > 0
         res <- celda::decontX(counts[keep, , drop = FALSE], z = cluster, batch = library,
             verbose = FALSE)
@@ -123,9 +140,31 @@ ambient_summary <- function(counts, cluster, library = NULL, rho = NULL, genes =
         rho_source <- "given"
     }
     structure(list(umi = umi, detect = detect, n_cells = n_cells,
-        cluster_library_umi = cluster_library_umi, library_share = library_share,
+        cluster_library_umi = cluster_library_umi,
+        cluster_library_cells = cluster_library_cells, library_share = library_share,
         rho = rho, rho_source = rho_source, genes = genes, clusters = clusters,
         libraries = libraries), class = "scmarco_ambient")
+}
+
+# Fewest cells per cluster, on average over the clusters a library has cells
+# of, for DecontX to estimate the library's contamination well
+AMBIENT_MIN_CELLS_PER_CLUSTER <- 10
+
+small_library_note <- function(cluster_library_cells) {
+    # Warning text naming the libraries with fewer than
+    # AMBIENT_MIN_CELLS_PER_CLUSTER cells per cluster, or NULL
+    cells <- colSums(cluster_library_cells)
+    n_cl <- colSums(cluster_library_cells > 0)
+    per <- cells / pmax(n_cl, 1)
+    small <- per < AMBIENT_MIN_CELLS_PER_CLUSTER
+    if (!any(small)) return(NULL)
+    paste0(sum(small), " of ", length(per), " librar", if (length(per) == 1) "y has" else "ies have",
+        " fewer than ", AMBIENT_MIN_CELLS_PER_CLUSTER, " cells per cluster (",
+        first_few(sprintf("%s: %d cells over %d clusters", names(per)[small], as.integer(cells[small]),
+            as.integer(n_cl[small]))),
+        "), so DecontX may underestimate their contamination and the ambient check flag ",
+        "too many OFF calls. If several 10x channels were loaded from one cell suspension, ",
+        "give the suspension as library: its channels share its ambient RNA.")
 }
 
 ambient_expected <- function(amb, genes = amb$genes, clusters = amb$clusters) {
