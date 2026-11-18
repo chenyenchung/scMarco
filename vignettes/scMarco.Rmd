@@ -202,14 +202,28 @@ New datasets are built in two steps:
    pipeline, and `add_probability()` adds its output, one table per split.
 
 `make_pseudobulk()` pools each cluster's raw counts into the model's
-samples, as `Seurat::AggregateExpression()` does: random parts, or the values
-of a metadata column (`method = "metadata"`).
+samples, as `Seurat::AggregateExpression()` does: one sample per library
+(`method = "metadata"`), or random parts. `call_mixture()` binarizes a gene
+when its two-state fit beats a single Gaussian at a false discovery rate of
+10%, its ON and OFF levels are apart (Ashman's D of at least 2) and its
+chains agree; it flags calls to treat as ambiguous: chains that disagree, ON
+with too few cells detecting the gene, and OFF with more UMIs than the
+ambient RNA estimated by `ambient_summary()` (DecontX) explains. Every cut is
+an argument, and the values in use are printed. `qc_report()` summarizes the
+result per split.
 
 ```{r build, eval = FALSE}
 seurat_to_h5ad("neurons.rds", "neurons", out_dir = "data",
                split_col = "sex", cluster_col = "seurat_clusters",
                split_label = "sex")
-# tables from call_mixture(); add external = TRUE for the pipeline's tables
+# per split: raw counts of its cells, cluster IDs and libraries
+pb <- make_pseudobulk(counts, cluster, method = "metadata", group = library)
+fit <- fit_mixture(pb$lognorm, pb$cluster, pb$replicate)  # chunks: merge_mixture_fits()
+amb <- ambient_summary(counts, cluster, library)
+male <- call_mixture(fit, amb)
+qc_report(fit, male, amb, file = "qc/neurons_Male", dataset = "neurons", split = "Male")
+saveRDS(male, "male_prob.rds")
+# one table per split; add external = TRUE for tables from outside scMarco
 add_probability("data/neurons.clusters.h5ad",
                 c(Male = "male_prob.rds", Female = "female_prob.rds"))
 ```

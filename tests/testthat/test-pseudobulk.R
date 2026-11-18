@@ -33,6 +33,14 @@ test_that("metadata mode splits clusters by a cell column", {
   expect_equal(unname(pb$lognorm[, "B_L2"]), unname(log1p(summed / sum(summed) * 1e4)))
   expect_message(make_pseudobulk(x, cluster, method = "metadata", group = group,
                                  min_cells = 6), "left out")
+  # by default every group is a sample, and small ones are named
+  expect_message(pb <- make_pseudobulk(x, cluster, method = "metadata", group = group),
+                 "3 sample\\(s\\) have fewer than 10 cells.*A_L1 \\(7\\), A_L2 \\(8\\), A_L3 \\(5\\)")
+  expect_equal(pb$replicate, c("L1", "L2", "L3", "L1", "L2"))
+  expect_false(anyNA(pb$sample))
+  # random parts keep a minimum of 10 cells by default
+  pb <- make_pseudobulk(x, rep(c("A", "B"), c(15, 25)), n_samples = 2)
+  expect_equal(unname(pb$n_cells), c(15, 13, 12))
   expect_error(make_pseudobulk(x, cluster, method = "metadata"), "needs group")
   expect_error(make_pseudobulk(x, cluster, group = group), "metadata")
 })

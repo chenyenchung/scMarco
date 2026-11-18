@@ -26,6 +26,10 @@
   for `fit_mixture()` as `Seurat::AggregateExpression()` does (summed counts,
   then LogNormalize): random parts (sampling without replacement) or the
   values of a cell metadata column.
+* `make_pseudobulk(method = "metadata")` has no minimum sample size by
+  default: every library (or other group) in a cluster is a sample, and a
+  message names the samples with fewer than 10 cells. Random parts keep a
+  minimum of 10 cells. Give `min_cells` to set either.
 * Fixed: `fit_mixture()` no longer loops forever when a replicate label has
   a single sample.
 * The confidence margin is now the *ambiguity band* `band`, the half-width

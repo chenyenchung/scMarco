@@ -4,6 +4,10 @@
 # which assumes the cluster is homogeneous) or the values of a cell metadata
 # column.
 
+# Default fewest cells per random part; metadata samples below it are named
+# in a message (they have no minimum by default)
+PSEUDOBULK_MIN_CELLS <- 10
+
 with_seed <- function(seed, code) {
     # Evaluate `code` after set.seed(seed), leaving the caller's random state
     # as it was; seed NULL uses the current random state
@@ -40,9 +44,12 @@ with_seed <- function(seed, code) {
 #' pipeline did, map them to two groups first.
 #'
 #' A cluster gets fewer random parts when it has fewer than `min_cells`
-#' cells per part (one sample below `2 * min_cells` cells). With metadata, a
-#' value with fewer than `min_cells` cells in a cluster is left out of it
-#' (those cells are in no sample).
+#' cells per part (one sample below `2 * min_cells` cells; by default 10
+#' cells). With metadata there is no minimum by default: every value of
+#' `group` in a cluster is a sample, however few its cells, and a message
+#' names the samples with fewer than 10 cells (their expression is the least
+#' certain). Give `min_cells` to leave such values out of a cluster instead
+#' (those cells are then in no sample).
 #'
 #' @param counts Raw counts of one split's cells, genes x cells (a matrix or
 #'   sparse `Matrix`, gene row names), e.g. the `counts` layer of a Seurat
@@ -52,7 +59,8 @@ with_seed <- function(seed, code) {
 #' @param method `"random"` or `"metadata"` (see Details).
 #' @param group For `"metadata"`, the value of each cell that splits the
 #'   clusters (e.g. `obj$orig.ident`).
-#' @param min_cells Fewest cells per sample (see Details).
+#' @param min_cells Fewest cells per sample (see Details); `NULL` (the
+#'   default) is 10 for `"random"` and no minimum for `"metadata"`.
 #' @param seed Random seed for the shuffle; the caller's random
 #'   state is restored afterwards. `NULL` uses the current random state.
 #'
@@ -77,8 +85,9 @@ with_seed <- function(seed, code) {
 #' @export
 make_pseudobulk <- function(counts, cluster, n_samples = 2,
                             method = c("random", "metadata"), group = NULL,
-                            min_cells = 10, seed = 42) {
+                            min_cells = NULL, seed = 42) {
     method <- match.arg(method)
+    if (is.null(min_cells)) min_cells <- if (method == "random") PSEUDOBULK_MIN_CELLS else 1
     counts <- as_count_matrix(counts)
     n <- ncol(counts)
     if (length(cluster) != n) fail("cluster has ", length(cluster), " entries for ", n, " cells")
@@ -143,7 +152,16 @@ make_pseudobulk <- function(counts, cluster, n_samples = 2,
     out <- log1p(t(t(summed) / pmax(colSums(summed), 1)) * 1e4)
     dimnames(out) <- list(rownames(counts), samples)
 
+    n_cells <- setNames(tabulate(j, length(samples)), samples)
+    small <- n_cells < PSEUDOBULK_MIN_CELLS
+    if (method == "metadata" && any(small)) {
+        message(sum(small), " sample(s) have fewer than ", PSEUDOBULK_MIN_CELLS, " cells, so their ",
+            "expression is the least certain: ",
+            first_few(sprintf("%s (%d)", names(n_cells)[small], n_cells[small])),
+            ". Give min_cells to leave such groups out.")
+    }
+
     list(lognorm = out, cluster = sample_cluster, replicate = replicate,
-        n_cells = setNames(tabulate(j, length(samples)), samples), sample = cell_sample,
+        n_cells = n_cells, sample = cell_sample,
         method = method)
 }

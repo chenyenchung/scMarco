@@ -10,7 +10,7 @@ make_pseudobulk(
   n_samples = 2,
   method = c("random", "metadata"),
   group = NULL,
-  min_cells = 10,
+  min_cells = NULL,
   seed = 42
 )
 }
@@ -28,7 +28,8 @@ object.}
 \item{group}{For \code{"metadata"}, the value of each cell that splits the
 clusters (e.g. \code{obj$orig.ident}).}
 
-\item{min_cells}{Fewest cells per sample (see Details).}
+\item{min_cells}{Fewest cells per sample (see Details); \code{NULL} (the
+default) is 10 for \code{"random"} and no minimum for \code{"metadata"}.}
 
 \item{seed}{Random seed for the shuffle; the caller's random
 state is restored afterwards. \code{NULL} uses the current random state.}
@@ -61,9 +62,12 @@ To pool libraries into two replicates, as the mixture_modeling_smk
 pipeline did, map them to two groups first.
 
 A cluster gets fewer random parts when it has fewer than \code{min_cells}
-cells per part (one sample below \code{2 * min_cells} cells). With metadata, a
-value with fewer than \code{min_cells} cells in a cluster is left out of it
-(those cells are in no sample).
+cells per part (one sample below \code{2 * min_cells} cells; by default 10
+cells). With metadata there is no minimum by default: every value of
+\code{group} in a cluster is a sample, however few its cells, and a message
+names the samples with fewer than 10 cells (their expression is the least
+certain). Give \code{min_cells} to leave such values out of a cluster instead
+(those cells are then in no sample).
 }
 \examples{
 set.seed(1)
