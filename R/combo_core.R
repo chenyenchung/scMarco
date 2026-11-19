@@ -3,12 +3,12 @@
 # Pure functions (no Shiny, no I/O) shared by every tab. They operate on a
 # "binarized dataset" produced by binarize():
 #
-#   on[gene, cluster, split]  logical  confidently ON: prob >= 0.5 + band
+#   on[gene, cluster, split]  logical  confidently ON: prob >= 0.5 + band_width / 2
 #                                      (FALSE when the cluster is absent from
 #                                      the split or the gene is non-bimodal in
 #                                      that split)
 #   ambiguous[gene, cluster, split]
-#                             logical  0.5 - band < prob < 0.5 + band: neither
+#                             logical  inside the ambiguity band: neither
 #                                      confidently ON nor confidently OFF; or
 #                                      a call that the binarizer 1.1 flags
 #                                      (chains disagree, ON below the detection
@@ -30,9 +30,10 @@
 #' calls. Most users get this from [ds_binarize()], which reads the inputs
 #' from a dataset and caches the result.
 #'
-#' A gene is ON in a cluster and split when its probability is at least
-#' `0.5 + band`, OFF when it is at most `0.5 - band`, and ambiguous in
-#' between (the ambiguity band).
+#' A gene is ON in a cluster and split when its probability is above the
+#' ambiguity band, OFF when it is below it, and ambiguous inside it. The band
+#' is centered on 0.5 and `band_width` wide: at 0.6 a gene is ON at P(On) >=
+#' 0.8, OFF at <= 0.2, and ambiguous in between.
 #' Ambiguous calls never count as ON, but they do count as off-target
 #' expression. A gene the mixture model did not call bimodal in a split is
 #' neither ON nor ambiguous there.
@@ -47,9 +48,11 @@
 #' @param obs_split,obs_cluster Character vectors: the split and cluster of
 #'   each row of `prob`.
 #' @param splits,clusters The full, ordered sets of splits and clusters.
-#' @param band Half-width of the ambiguity band around P(On) = 0.5, in
-#'   \[0, 0.5). At 0 there is no ambiguous band and ON is `prob > 0.5`.
-#'   The default elsewhere in scMarco is 0.3 (ON at 0.8, OFF at 0.2).
+#' @param band_width Full width of the ambiguity band centered on P(On) =
+#'   0.5, in \[0, 1): ON at `prob >= 0.5 + band_width / 2`, OFF at
+#'   `prob <= 0.5 - band_width / 2`. At 0 there is no ambiguous band and ON
+#'   is `prob > 0.5`. The default elsewhere in scMarco is 0.6 (ambiguous
+#'   between 0.2 and 0.8).
 #' @param bimodal Optional logical matrix, genes x splits: whether the
 #'   mixture model called the gene bimodal in that split.
 #' @param flags Optional integer matrix shaped like `prob`: the flags of
@@ -66,29 +69,29 @@
 #'   arrays `on` and `ambiguous` (genes x clusters x splits), the logical
 #'   matrices `present` (clusters x splits), `bimodal` (genes x splits) and
 #'   `anyon` (genes x clusters: ON or ambiguous in any split, see [any_on()]),
-#'   `genes`, `clusters`, `splits`, `band`, `flags_applied` (whether
+#'   `genes`, `clusters`, `splits`, `band_width`, `flags_applied` (whether
 #'   `flags` were given), `flagged` (genes x clusters x splits integers: the
 #'   flag that made a call ambiguous, 1, 2 or 4, else 0; `NULL` without
 #'   `flags`), and `fold` (genes x clusters x splits, `NULL` without `fold`)
 #'   and `ashman_D_lower` as given.
-#' @param margin Deprecated: the former confidence margin, `0.5 - band`.
+#' @param margin Deprecated: the former confidence margin, `band_width = 1 - 2 * margin`.
 #' @examples
 #' prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,
 #'     dimnames = list(NULL, c("geneA", "geneB")))
 #' b <- binarize(prob, obs_split = c("adult", "adult"),
 #'     obs_cluster = c("c1", "c2"), splits = "adult",
-#'     clusters = c("c1", "c2"), band = 0.4)
+#'     clusters = c("c1", "c2"), band_width = 0.8)
 #' b$on[, , "adult"]
 #' b$ambiguous[, , "adult"]
 #' @export
 binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
-                     band, bimodal = NULL, flags = NULL, fold = NULL,
+                     band_width, bimodal = NULL, flags = NULL, fold = NULL,
                      ashman_D_lower = NULL, margin = NULL) {
-    band <- band_from_margin(if (missing(band)) NULL else band, margin)
+    band_width <- width_from_margin(if (missing(band_width)) NULL else band_width, margin)
     stopifnot(
         nrow(prob) == length(obs_split),
         length(obs_split) == length(obs_cluster),
-        band >= 0, band < 0.5
+        band_width >= 0, band_width < 1
     )
     genes <- colnames(prob)
     present <- matrix(
@@ -105,8 +108,9 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
 
     # tolerance so slider steps such as 1 - 0.3 land on 0.7
     eps <- 1e-9
-    off <- is.na(prob) | prob <= 0.5 - band + eps
-    hit <- !off & prob >= 0.5 + band - eps
+    half <- band_width / 2
+    off <- is.na(prob) | prob <= 0.5 - half + eps
+    hit <- !off & prob >= 0.5 + half - eps
     unsure <- !off & !hit
     if (!is.null(flags)) {
         stopifnot(identical(dim(flags), dim(prob)))
@@ -172,7 +176,7 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
         list(
             on = on, ambiguous = ambiguous, present = present, bimodal = bimodal,
             anyon = anyon_matrix(on, ambiguous),
-            genes = genes, clusters = clusters, splits = splits, band = band,
+            genes = genes, clusters = clusters, splits = splits, band_width = band_width,
             flags_applied = !is.null(flags), flagged = flagged, fold = fold_arr,
             ashman_D_lower = ashman_D_lower
         ),
@@ -180,16 +184,16 @@ binarize <- function(prob, obs_split, obs_cluster, splits, clusters,
     )
 }
 
-band_from_margin <- function(band, margin) {
-    # `margin` (the former confidence margin) is deprecated: band = 0.5 - margin.
-    # band: NULL when the caller did not give it
+width_from_margin <- function(band_width, margin) {
+    # `margin` (the former confidence margin) is deprecated:
+    # band_width = 1 - 2 * margin. band_width: NULL when the caller did not give it
     if (!is.null(margin)) {
-        if (!is.null(band)) stop("give band or margin, not both", call. = FALSE)
-        warning("`margin` is deprecated; use `band = 0.5 - margin` (here ", 0.5 - margin, ")",
-            call. = FALSE)
-        return(0.5 - margin)
+        if (!is.null(band_width)) stop("give band_width or margin, not both", call. = FALSE)
+        warning("`margin` is deprecated; use `band_width = 1 - 2 * margin` (here ",
+            1 - 2 * margin, ")", call. = FALSE)
+        return(1 - 2 * margin)
     }
-    band
+    band_width
 }
 
 #' Limit a binarized dataset to some clusters
@@ -204,7 +208,7 @@ band_from_margin <- function(band, margin) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' sub <- restrict_clusters(b, b$clusters[1:20])
 #' length(sub$clusters)
 #' @export
@@ -236,7 +240,7 @@ restrict_clusters <- function(b, keep) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' one <- restrict_splits(b, b$splits[1])
 #' one$splits
 #' @export
@@ -298,7 +302,7 @@ pass_matrix <- function(b, required, min_n, clusters = b$clusters,
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' any_on(b, genes = b$genes[1:3], clusters = b$clusters[1:4])
 #' @export
 any_on <- function(b, genes = b$genes, clusters = b$clusters) {
@@ -365,7 +369,7 @@ offtarget_counts <- function(b, genes, exclude) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' from_cluster(b, ident = b$clusters[1], required = character(0), min_n = 1)
 #' @export
 from_cluster <- function(b, ident, required, min_n, limit = 10,
@@ -392,7 +396,7 @@ from_cluster <- function(b, ident, required, min_n, limit = 10,
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' clusters_expressing(b, b$genes[1:2], required = character(0), min_n = 1,
 #'     mode = "any")
 #' @export
@@ -433,7 +437,7 @@ clusters_expressing <- function(b, genes, required, min_n,
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' hits <- distinct_within(b, b$clusters[1:3], required = character(0),
 #'     min_n = 1)
 #' head(hits)
@@ -596,7 +600,7 @@ pair_separation <- function(b, ident, cand, idx, chunk = 5000) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' pair_offtargets(b, ident = b$clusters[1], required = character(0),
 #'     min_n = 1, limit = 5)
 #' @export
@@ -680,7 +684,7 @@ can_rank <- function(vals, limit) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' combo_offtarget_clusters(b, b$genes[1:2])
 #' @export
 combo_offtarget_clusters <- function(b, genes, exclude = character(0)) {
@@ -707,7 +711,7 @@ combo_offtarget_clusters <- function(b, genes, exclude = character(0)) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' head(state_table(b, b$genes[1], clusters = b$clusters[1:2]))
 #' @export
 state_table <- function(b, genes, clusters = b$clusters) {

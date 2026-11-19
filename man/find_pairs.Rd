@@ -7,7 +7,7 @@
 find_pairs(
   clusters,
   out = NULL,
-  band = 0,
+  band_width = 0,
   required = character(0),
   min_n = 1,
   top = 20,
@@ -24,8 +24,8 @@ find_pairs(
 \item{out}{Optional path: also write the table there as CSV (empty
 \code{cluster_name} = unnamed).}
 
-\item{band}{Ambiguity band of \code{\link[=ds_binarize]{ds_binarize()}}; the default 0 calls a gene
-ON above P(On) = 0.5 with no ambiguous band.}
+\item{band_width}{Width of the ambiguity band of \code{\link[=ds_binarize]{ds_binarize()}}; the
+default 0 calls a gene ON above P(On) = 0.5 with no ambiguous band.}
 
 \item{required, min_n}{Both genes must be ON in every \code{required} split and
 in at least \code{min_n} splits.}
@@ -36,7 +36,7 @@ in at least \code{min_n} splits.}
 (\code{\link[parallel:mclapply]{parallel::mclapply()}}); one on Windows, which cannot fork. The result
 does not depend on it.}
 
-\item{cut}{Deprecated: the former confidence margin, \code{0.5 - band}.}
+\item{cut}{Deprecated: the former confidence margin, \code{band_width = 1 - 2 * cut}.}
 
 \item{splits}{Optional splits to search, e.g. one stage: genes are ON and
 clusters are off-targets only by their calls there (see

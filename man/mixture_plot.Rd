@@ -9,7 +9,7 @@ mixture_plot(
   gene,
   model,
   highlight = character(0),
-  band = 0,
+  band_width = 0,
   margin = NULL
 )
 }
@@ -24,9 +24,10 @@ the given order, one histogram and curve each.}
 
 \item{highlight}{Cluster IDs to label.}
 
-\item{band}{Ambiguity band, as in \code{\link[=ds_binarize]{ds_binarize()}}.}
+\item{band_width}{Width of the ambiguity band, as in \code{\link[=ds_binarize]{ds_binarize()}}.}
 
-\item{margin}{Deprecated: the former confidence margin, \code{0.5 - band}.}
+\item{margin}{Deprecated: the former confidence margin,
+\code{band_width = 1 - 2 * margin}.}
 }
 \value{
 A ggplot object (a \code{\link[cowplot:plot_grid]{cowplot::plot_grid()}} of the curve and the
@@ -45,8 +46,8 @@ ds <- ds_load("toy", list(
     cells = file.path(toy, "toy.cells.h5ad")
 ))
 mixture_plot(ds, "Kr", model = mixture_model_choices(ds)[[1]],
-    highlight = "1", band = 0.4)
+    highlight = "1", band_width = 0.8)
 # Every model of the dataset, stacked
 mixture_plot(ds, "Kr", model = mixture_model_choices(ds),
-    highlight = "1", band = 0.4)
+    highlight = "1", band_width = 0.8)
 }

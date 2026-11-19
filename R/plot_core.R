@@ -110,7 +110,7 @@ pct_label_layer <- function(df, box_size) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' onoff_plot(ds, b, b$genes[1:5], b$clusters[1:3])
 #' @export
 onoff_plot <- function(ds, b, genes, idents, show_pct = FALSE) {
@@ -237,7 +237,7 @@ coexp_cell_fraction <- function(ds, genes) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' coexp_plot(ds, b, b$genes[1:2])
 #' @export
 coexp_plot <- function(ds, b, genes, show_pct = FALSE) {
@@ -367,7 +367,7 @@ box_layers <- function(stats, fill = "#CCCCCC") {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' trend_plot(ds, ds$all_genes[1], highlight = ds$clusters[1:2],
 #'     interactive = FALSE)
 #' @export
@@ -710,8 +710,9 @@ mixture_p_on <- function(x, fit) {
 #'   [mixture_model_choices()]). Several models are stacked top to bottom in
 #'   the given order, one histogram and curve each.
 #' @param highlight Cluster IDs to label.
-#' @param band Ambiguity band, as in [ds_binarize()].
-#' @param margin Deprecated: the former confidence margin, `0.5 - band`.
+#' @param band_width Width of the ambiguity band, as in [ds_binarize()].
+#' @param margin Deprecated: the former confidence margin,
+#'   `band_width = 1 - 2 * margin`.
 #'
 #' @return A ggplot object (a [cowplot::plot_grid()] of the curve and the
 #'   cluster averages of each model).
@@ -722,18 +723,19 @@ mixture_p_on <- function(x, fit) {
 #'     cells = file.path(toy, "toy.cells.h5ad")
 #' ))
 #' mixture_plot(ds, "Kr", model = mixture_model_choices(ds)[[1]],
-#'     highlight = "1", band = 0.4)
+#'     highlight = "1", band_width = 0.8)
 #' # Every model of the dataset, stacked
 #' mixture_plot(ds, "Kr", model = mixture_model_choices(ds),
-#'     highlight = "1", band = 0.4)
+#'     highlight = "1", band_width = 0.8)
 #' @export
-mixture_plot <- function(ds, gene, model, highlight = character(0), band = 0, margin = NULL) {
-    if (!is.null(margin)) band <- band_from_margin(NULL, margin)
+mixture_plot <- function(ds, gene, model, highlight = character(0), band_width = 0,
+                         margin = NULL) {
+    if (!is.null(margin)) band_width <- width_from_margin(NULL, margin)
     model <- unname(model)
     if (length(model) == 0) return(message_plot("No mixture model selected."))
     if (length(model) > 1) {
         panels <- lapply(model, function(m) {
-            mixture_plot(ds, gene, m, highlight = highlight, band = band)
+            mixture_plot(ds, gene, m, highlight = highlight, band_width = band_width)
         })
         return(cowplot::plot_grid(plotlist = panels, ncol = 1))
     }
@@ -806,9 +808,10 @@ mixture_plot <- function(ds, gene, model, highlight = character(0), band = 0, ma
             color = "#D7191C", linewidth = 0.6)
     }
 
+    half <- band_width / 2
     curve <- data.frame(x = grid, y = mixture_p_on(grid, fit))
     bottom <- ggplot(curve, aes(x = x, y = y)) +
-        geom_hline(yintercept = unique(c(0.5 - band, 0.5 + band)), linetype = "dotted",
+        geom_hline(yintercept = unique(c(0.5 - half, 0.5 + half)), linetype = "dotted",
             color = "#7A7A7A") +
         geom_line(linewidth = 1, color = "#1B1B1B") +
         geom_rug(data = avg, aes(x = x), inherit.aes = FALSE,
@@ -836,9 +839,9 @@ mixture_plot <- function(ds, gene, model, highlight = character(0), band = 0, ma
         } else {
             "Cluster average: mean of log-normalized values (no cell-level file); the model was fit on log of the mean, so clusters may sit off the curve."
         },
-        if (band > 0) {
+        if (band_width > 0) {
             sprintf("Dotted lines: ON at P(On) >= %.2f, OFF at P(On) <= %.2f; ambiguous in between.",
-                0.5 + band, 0.5 - band)
+                0.5 + half, 0.5 - half)
         } else {
             "Dotted line: ON above P(On) = 0.50."
         },

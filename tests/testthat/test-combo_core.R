@@ -1,6 +1,6 @@
 # Toy dataset: 5 genes, clusters A/B/C, splits s1/s2/s3; C is absent from s3.
 # Values are probabilities; rows are split|cluster observations.
-toy <- function(band = 0, bimodal = NULL) {
+toy <- function(band_width = 0, bimodal = NULL) {
   obs <- data.frame(
     split = c("s1", "s1", "s1", "s2", "s2", "s2", "s3", "s3"),
     cluster = c("A", "B", "C", "A", "B", "C", "A", "B")
@@ -19,7 +19,7 @@ toy <- function(band = 0, bimodal = NULL) {
   colnames(prob) <- paste0("g", 1:5)
   binarize(prob, obs$split, obs$cluster,
            splits = c("s1", "s2", "s3"), clusters = c("A", "B", "C"),
-           band = band, bimodal = bimodal)
+           band_width = band_width, bimodal = bimodal)
 }
 
 test_that("binarize marks absent clusters and uses a strict threshold", {
@@ -39,7 +39,7 @@ test_that("binarize makes the calls flagged by the binarizer 1.1 ambiguous", {
                     CALL_FLAG_CHAINS, CALL_FLAG_DETECTION, CALL_FLAG_AMBIENT, 0L,
                     CALL_FLAG_AMBIENT), ncol = 1)
   cl <- paste0("c", 1:8)
-  b <- binarize(prob, rep("s", 8), cl, "s", cl, band = 0.3, flags = flags)
+  b <- binarize(prob, rep("s", 8), cl, "s", cl, band_width = 0.6, flags = flags)
   # ON: chains disagree or below the detection floor -> ambiguous; above ambient stays ON
   # OFF: chains disagree or above ambient -> ambiguous; below the floor stays OFF
   expect_identical(unname(b$on["g", , "s"]),
@@ -58,12 +58,12 @@ test_that("binarize makes the calls flagged by the binarizer 1.1 ambiguous", {
                   b, "g", cl)
   expect_match(p$labels$caption, "c: the fit's chains disagree.*d: too few cells.*a: more UMIs")
   # without flags only the band decides
-  b0 <- binarize(prob, rep("s", 8), cl, "s", cl, band = 0.3)
+  b0 <- binarize(prob, rep("s", 8), cl, "s", cl, band_width = 0.6)
   expect_identical(unname(b0$on["g", , "s"]), rep(c(TRUE, FALSE), c(3, 5)))
   expect_false(b0$flags_applied)
   expect_null(b0$flagged)
   expect_true(all(state_table(b0, "g")$reason == ""))
-  expect_error(binarize(prob, rep("s", 8), cl, "s", cl, band = 0.3, flags = flags[-1, , drop = FALSE]))
+  expect_error(binarize(prob, rep("s", 8), cl, "s", cl, band_width = 0.6, flags = flags[-1, , drop = FALSE]))
 })
 
 test_that("pair_offtargets breaks ties by separation, then Ashman's D", {
@@ -74,7 +74,7 @@ test_that("pair_offtargets breaks ties by separation, then Ashman's D", {
   fold <- rbind(c(5, 4, 6),     # T
                 c(2, 0.5, 1),   # A
                 c(0, 3, 3))     # B
-  b <- binarize(prob, rep("s", 3), cl, "s", cl, band = 0.3, fold = fold)
+  b <- binarize(prob, rep("s", 3), cl, "s", cl, band_width = 0.6, fold = fold)
   res <- pair_offtargets(b, "T", character(0), 1)
   # g1+g3: target 5, worst leak max(min(2, 1), min(0, 3)) = 1 -> 4
   # g1+g2: target 4, leak max(0.5, 0) = 0.5 -> 3.5; g2+g3: 4 - 3 = 1
@@ -86,19 +86,19 @@ test_that("pair_offtargets breaks ties by separation, then Ashman's D", {
   # an off-target cluster (both genes ON) is not a leak
   prob2 <- prob
   prob2[3, 1:2] <- 0.95
-  res2 <- pair_offtargets(binarize(prob2, rep("s", 3), cl, "s", cl, band = 0.3, fold = fold),
+  res2 <- pair_offtargets(binarize(prob2, rep("s", 3), cl, "s", cl, band_width = 0.6, fold = fold),
                           "T", character(0), 1)
   expect_equal(res2$worst_leak[res2$gene1 == "g1" & res2$gene2 == "g2"], 0.5)
   expect_equal(res2$offtargets[res2$gene1 == "g1" & res2$gene2 == "g2"], 1)
   # without folds: the weaker gene's Ashman's D lower bound, then position
   D <- matrix(c(3, 1, 2), 3, dimnames = list(paste0("g", 1:3), "s"))
-  b <- binarize(prob, rep("s", 3), cl, "s", cl, band = 0.3, ashman_D_lower = D)
+  b <- binarize(prob, rep("s", 3), cl, "s", cl, band_width = 0.6, ashman_D_lower = D)
   res <- pair_offtargets(b, "T", character(0), 1)
   expect_identical(paste(res$gene1, res$gene2), c("g1 g3", "g1 g2", "g2 g3"))
   expect_equal(res$ashman_D_lower, c(2, 1, 1))
   expect_true(all(is.na(res$separation)))
   # without either: as before (single-gene off-targets, then position)
-  res <- pair_offtargets(binarize(prob, rep("s", 3), cl, "s", cl, band = 0.3),
+  res <- pair_offtargets(binarize(prob, rep("s", 3), cl, "s", cl, band_width = 0.6),
                          "T", character(0), 1)
   expect_identical(paste(res$gene1, res$gene2), c("g1 g2", "g1 g3", "g2 g3"))
 })
@@ -111,7 +111,7 @@ test_that("pairs rank by ON-ON off-targets before ambiguous ones", {
                 c(0.95, 0.02, 0.5),    # B: g1 ON, g3 ambiguous
                 c(0.5, 0.02, 0.95))    # C: g1 ambiguous, g3 ON
   colnames(prob) <- paste0("g", 1:3)
-  b <- binarize(prob, rep("s", 4), cl, "s", cl, band = 0.3)
+  b <- binarize(prob, rep("s", 4), cl, "s", cl, band_width = 0.6)
   res <- pair_offtargets(b, "T", character(0), 1)
   # by all off-targets g1+g2 (1) would come before g1+g3 (2); a confident
   # off-target ranks below any number of ambiguous ones
@@ -264,7 +264,7 @@ test_that("a non-bimodal gene makes co-expression undetermined, like NA", {
 })
 
 test_that("calls inside the ambiguity band are ambiguous and never help", {
-  b <- toy(band = 0.3)
+  b <- toy(band_width = 0.6)
   # 0.9 is ON, 0.1 is OFF, 0.5 (g5 in s1 A) is ambiguous
   expect_true(b$on["g1", "A", "s1"])
   expect_false(b$on["g5", "A", "s1"])
@@ -276,14 +276,14 @@ test_that("calls inside the ambiguity band are ambiguous and never help", {
   expect_equal(offtarget_counts(b, "g5", exclude = "B"), c(g5 = 1L))
   expect_equal(state_table(b, "g5", clusters = "A")$state,
                c("Ambiguous", "Not expressed", "Not expressed"))
-  # the band edges are not ambiguous: band 0.4 makes 0.9 ON and 0.1 OFF
-  b <- toy(band = 0.4)
+  # the band edges are not ambiguous: width 0.8 makes 0.9 ON and 0.1 OFF
+  b <- toy(band_width = 0.8)
   expect_true(b$on["g1", "A", "s1"])
   expect_false(b$ambiguous["g1", "B", "s1"])
 })
 
 test_that("an ambiguous gene makes co-expression undetermined", {
-  b <- toy(band = 0.3)
+  b <- toy(band_width = 0.6)
   co <- coexp_data(NULL, b, c("g1", "g5"))
   co <- co[co$gene == "Co-expressed", ]
   state <- function(cl, s) co$state[co$cluster == cl & co$split == s]
@@ -311,14 +311,14 @@ test_that("any_on reads the matrix binarize() stores, also after restricting", {
   }
   bimodal <- matrix(TRUE, 5, 3, dimnames = list(paste0("g", 1:5), c("s1", "s2", "s3")))
   bimodal["g5", "s1"] <- FALSE
-  for (b in list(toy(band = 0.4), toy(band = 0.4, bimodal = bimodal))) {
+  for (b in list(toy(band_width = 0.8), toy(band_width = 0.8, bimodal = bimodal))) {
     expect_identical(b$anyon, computed(b))
     expect_identical(any_on(b, "g5", c("C", "A")), computed(b, "g5", c("C", "A")))
     sub <- restrict_clusters(b, c("A", "C"))
     expect_identical(sub$anyon, computed(sub))
   }
-  # g5 is ambiguous (0.5 at band 0.4) only in s1 A
-  expect_identical(toy(band = 0.4)$anyon["g5", ], c(A = TRUE, B = FALSE, C = FALSE))
+  # g5 is ambiguous (0.5 at width 0.8) only in s1 A
+  expect_identical(toy(band_width = 0.8)$anyon["g5", ], c(A = TRUE, B = FALSE, C = FALSE))
 })
 
 test_that("can_rank keeps every value tied with the limit-th smallest", {
@@ -329,13 +329,13 @@ test_that("can_rank keeps every value tied with the limit-th smallest", {
     head(pair_offtargets(b, "A", character(0), 1, limit = 50), 1))
 })
 
-test_that("the deprecated margin gives the same calls as band = 0.5 - margin", {
+test_that("the deprecated margin gives the same calls as band_width = 1 - 2 * margin", {
   obs <- data.frame(split = c("s1", "s1"), cluster = c("A", "B"))
   prob <- matrix(c(0.95, 0.5, 0.05, 0.85), 2, dimnames = list(NULL, c("g1", "g2")))
-  b1 <- binarize(prob, obs$split, obs$cluster, "s1", c("A", "B"), band = 0.4)
+  b1 <- binarize(prob, obs$split, obs$cluster, "s1", c("A", "B"), band_width = 0.8)
   expect_warning(b2 <- binarize(prob, obs$split, obs$cluster, "s1", c("A", "B"), margin = 0.1),
                  "`margin` is deprecated")
   expect_identical(b2, b1)
   expect_error(suppressWarnings(binarize(prob, obs$split, obs$cluster, "s1", c("A", "B"),
-                                         band = 0.4, margin = 0.1)), "not both")
+                                         band_width = 0.8, margin = 0.1)), "not both")
 })

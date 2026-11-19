@@ -32,10 +32,11 @@
   minimum of 10 cells. Give `min_cells` to set either.
 * Fixed: `fit_mixture()` no longer loops forever when a replicate label has
   a single sample.
-* The confidence margin is now the *ambiguity band* `band`, the half-width
-  around P(On) = 0.5 (ON at P(On) >= 0.5 + band, OFF at <= 0.5 - band), in
+* The confidence margin is now the *ambiguity band*, set by its full width
+  `band_width` and centered on P(On) = 0.5 (ON at P(On) >= 0.5 + band_width / 2,
+  OFF at <= 0.5 - band_width / 2), in
   `binarize()`, `ds_binarize()`, `mixture_plot()`, `find_pairs()` and the
-  app's slider. The app's default is 30% (ON at 0.8, OFF at 0.2, Fred P.
+  app's slider. The app's default width is 60% (ON at 0.8, OFF at 0.2, Fred P.
   Davis's thresholds) instead of a 10% margin. `margin`, and `cut` in
   `find_pairs()`, still work with a deprecation warning.
 * Binarizer 1.1 calls (`call_mixture()`): genes are binarized at a false

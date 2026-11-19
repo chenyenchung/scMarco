@@ -27,6 +27,6 @@ which at least one of the genes is ON in some split.
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, band = 0.4)
+b <- ds_binarize(ds, band_width = 0.8)
 coexp_plot(ds, b, b$genes[1:2])
 }

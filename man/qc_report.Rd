@@ -9,7 +9,7 @@ qc_report(
   table,
   ambient = NULL,
   file = NULL,
-  band = 0.3,
+  band_width = 0.6,
   dataset = "",
   split = ""
 )
@@ -28,8 +28,8 @@ expected ambient UMIs.}
 \item{file}{Optional path without extension: writes \verb{<file>.yaml} and
 \verb{<file>.html}.}
 
-\item{band}{Ambiguity band at which the calls are counted (the app's
-default is 0.3).}
+\item{band_width}{Width of the ambiguity band at which the calls are
+counted (the app's default is 0.6: ambiguous between 0.2 and 0.8).}
 
 \item{dataset, split}{Names shown in the report.}
 }
@@ -47,7 +47,7 @@ provenance. With \code{file}, writes a structured YAML file (stable keys,
 }
 \details{
 The calls are counted as \code{\link[=binarize]{binarize()}} makes them: the ambiguity band
-\code{band} and the flags of \code{\link[=call_mixture]{call_mixture()}}.
+(\code{band_width}) and the flags of \code{\link[=call_mixture]{call_mixture()}}.
 }
 \examples{
 \dontrun{

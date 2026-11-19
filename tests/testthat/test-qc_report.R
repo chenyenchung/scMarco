@@ -43,12 +43,12 @@ test_that("qc_report counts genes and calls as binarize() makes them", {
   expect_named(qc$dataset$umis_per_library, "1")
   expect_identical(qc$dataset$cells_per_library, list(`1` = 12L))
   expect_identical(qc$settings$n_chains_bimodal, 8L)
-  expect_identical(qc$settings$band, 0.3)
+  expect_identical(qc$settings$band_width, 0.6)
   expect_identical(qc$ambient$rho, list(`1` = 0.01))
   expect_length(qc$warnings, 0)
   expect_true(length(qc$limitations) >= 4)
   # the band changes the counts
-  wide <- qc_report(x$fit, x$tab, x$amb, band = 0.49)
+  wide <- qc_report(x$fit, x$tab, x$amb, band_width = 0.98)
   expect_identical(wide$calls$ON, 2L)
 })
 
@@ -86,6 +86,6 @@ test_that("qc_report works without an ambient summary and checks its input", {
   bare <- tab
   attr(bare, "flags") <- NULL
   expect_error(qc_report(x$fit, bare), "must come from call_mixture")
-  expect_error(qc_report(x$fit, tab, band = 0.5), "band must be")
+  expect_error(qc_report(x$fit, tab, band_width = 1), "band_width must be")
   expect_error(qc_report(x$fit, tab, ambient = list()), "must come from ambient_summary")
 })

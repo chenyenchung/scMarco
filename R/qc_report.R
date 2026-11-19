@@ -40,7 +40,7 @@ QC_SETTING_INFO <- c(
     spread_cutoff = "Chain spread above which a cluster's call is ambiguous",
     reject_spread_frac = "Share of clusters above the spread cutoff at which a gene is not binarized",
     summary = "How each cluster's P(ON) is summarised from the posterior",
-    band = "Half-width of the ambiguity band around P(ON) = 0.5: ON above 0.5 + band, OFF below 0.5 - band",
+    band_width = "Full width of the ambiguity band centered on P(ON) = 0.5: ON at or above 0.5 + band_width / 2, OFF at or below 0.5 - band_width / 2",
     on_floor = "Minimum share of a cluster's cells with at least one UMI for an ON call",
     ambient_log2fc = "OFF becomes ambiguous only above this log2 fold over the expected ambient RNA (deliberately maximally permissive)",
     ambient_alpha = "Level of the test that a cluster's UMIs exceed that offset over ambient RNA",
@@ -85,7 +85,7 @@ qc_quant <- function(x, p = c(0, 0.1, 0.25, 0.5, 0.75, 0.9, 1)) {
 #' `qc_report_version`) and a self-contained HTML page (plots embedded).
 #'
 #' The calls are counted as [binarize()] makes them: the ambiguity band
-#' `band` and the flags of [call_mixture()].
+#' (`band_width`) and the flags of [call_mixture()].
 #'
 #' @param fit Fits of the split from [fit_mixture()] or
 #'   [merge_mixture_fits()].
@@ -96,8 +96,8 @@ qc_quant <- function(x, p = c(0, 0.1, 0.25, 0.5, 0.75, 0.9, 1)) {
 #'   expected ambient UMIs.
 #' @param file Optional path without extension: writes `<file>.yaml` and
 #'   `<file>.html`.
-#' @param band Ambiguity band at which the calls are counted (the app's
-#'   default is 0.3).
+#' @param band_width Width of the ambiguity band at which the calls are
+#'   counted (the app's default is 0.6: ambiguous between 0.2 and 0.8).
 #' @param dataset,split Names shown in the report.
 #'
 #' @return The report as a list (the content of the YAML file), invisibly
@@ -110,7 +110,7 @@ qc_quant <- function(x, p = c(0, 0.1, 0.25, 0.5, 0.75, 0.9, 1)) {
 #' qc_report(fit, tab, amb, file = "qc/mydata_Male", dataset = "mydata", split = "Male")
 #' }
 #' @export
-qc_report <- function(fit, table, ambient = NULL, file = NULL, band = 0.3,
+qc_report <- function(fit, table, ambient = NULL, file = NULL, band_width = 0.6,
                       dataset = "", split = "") {
     check_mixture(fit)
     params <- attr(table, "binarization")
@@ -122,8 +122,9 @@ qc_report <- function(fit, table, ambient = NULL, file = NULL, band = 0.3,
     if (!is.null(ambient) && !inherits(ambient, "scmarco_ambient")) {
         fail("ambient must come from ambient_summary()")
     }
-    if (!is.numeric(band) || length(band) != 1 || is.na(band) || band < 0 || band >= 0.5) {
-        fail("band must be one number in [0, 0.5)")
+    if (!is.numeric(band_width) || length(band_width) != 1 || is.na(band_width) ||
+        band_width < 0 || band_width >= 1) {
+        fail("band_width must be one number in [0, 1)")
     }
     genes <- rownames(table)
     if (!identical(genes, names(fit$fits))) {
@@ -136,7 +137,7 @@ qc_report <- function(fit, table, ambient = NULL, file = NULL, band = 0.3,
 
     # calls as binarize() makes them
     prob <- t(as.matrix(table[, clusters, drop = FALSE]))
-    b <- binarize(prob, rep("s", length(clusters)), clusters, "s", clusters, band = band,
+    b <- binarize(prob, rep("s", length(clusters)), clusters, "s", clusters, band_width = band_width,
         bimodal = matrix(binarized, dimnames = list(genes, "s")),
         flags = t(flags[genes, clusters, drop = FALSE]))
     one <- function(a) matrix(a, length(genes), length(clusters), dimnames = list(genes, clusters))
@@ -180,7 +181,7 @@ qc_report <- function(fit, table, ambient = NULL, file = NULL, band = 0.3,
     settings <- list(binarizer = fit$binarizer_version, prior = st$prior %||% "",
         n_iter = st$n_iter, n_folds = st$n_folds, seed = st$seed, n_chains_bimodal = chains,
         bh_q = params$bh_q, min_D = params$min_D, spread_cutoff = params$spread_cutoff,
-        reject_spread_frac = params$reject_spread_frac, summary = params$summary, band = band,
+        reject_spread_frac = params$reject_spread_frac, summary = params$summary, band_width = band_width,
         on_floor = params$on_floor, ambient_log2fc = params$ambient_log2fc,
         ambient_alpha = params$ambient_alpha, rho_source = params$rho_source %||% "")
     settings <- settings[!vapply(settings, is.null, logical(1))]

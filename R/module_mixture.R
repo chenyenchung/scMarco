@@ -59,7 +59,7 @@ mixture_server <- function(id, ctx) {
                     )
                     if (!ok) return(NULL)
                     list(ds = ctx$ds(), gene = input$gene_of_interest, model = model,
-                        highlight = ctx$idents(), band = ctx$band())
+                        highlight = ctx$idents(), band_width = ctx$band_width())
                 }
             )
 
@@ -75,7 +75,7 @@ mixture_server <- function(id, ctx) {
                 r <- request()
                 shiny::req(r)
                 with_spinner("Plotting...", mixture_plot(
-                    r$ds, r$gene, r$model, highlight = r$highlight, band = r$band
+                    r$ds, r$gene, r$model, highlight = r$highlight, band_width = r$band_width
                 ))
             })
 

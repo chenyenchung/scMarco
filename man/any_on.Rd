@@ -24,6 +24,6 @@ Which genes are ON or ambiguous in which clusters
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, band = 0.4)
+b <- ds_binarize(ds, band_width = 0.8)
 any_on(b, genes = b$genes[1:3], clusters = b$clusters[1:4])
 }

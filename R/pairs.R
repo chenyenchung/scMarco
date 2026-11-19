@@ -10,8 +10,8 @@
 #' @param clusters Path of the `.clusters.h5ad` file.
 #' @param out Optional path: also write the table there as CSV (empty
 #'   `cluster_name` = unnamed).
-#' @param band Ambiguity band of [ds_binarize()]; the default 0 calls a gene
-#'   ON above P(On) = 0.5 with no ambiguous band.
+#' @param band_width Width of the ambiguity band of [ds_binarize()]; the
+#'   default 0 calls a gene ON above P(On) = 0.5 with no ambiguous band.
 #' @param required,min_n Both genes must be ON in every `required` split and
 #'   in at least `min_n` splits.
 #' @param splits Optional splits to search, e.g. one stage: genes are ON and
@@ -22,7 +22,7 @@
 #' @param top Maximum number of pairs per cluster (`Inf` for all).
 #' @param max_onon Optional number: per cluster, every pair with at most this
 #'   many ON-ON off-targets, before `top` applies (see [pair_offtargets()]).
-#' @param cut Deprecated: the former confidence margin, `0.5 - band`.
+#' @param cut Deprecated: the former confidence margin, `band_width = 1 - 2 * cut`.
 #' @param cores Number of clusters ranked at once, in forked processes
 #'   ([parallel::mclapply()]); one on Windows, which cannot fork. The result
 #'   does not depend on it.
@@ -41,16 +41,16 @@
 #' pairs <- find_pairs(ex, top = 3)
 #' head(pairs)
 #' @export
-find_pairs <- function(clusters, out = NULL, band = 0, required = character(0),
+find_pairs <- function(clusters, out = NULL, band_width = 0, required = character(0),
                        min_n = 1, top = 20, cores = 1, cut = NULL, splits = NULL,
                        genes = NULL, max_onon = NULL) {
     if (!is.null(cut)) {
-        warning("`cut` is deprecated; use `band = 0.5 - cut` (here ", 0.5 - cut, ")",
+        warning("`cut` is deprecated; use `band_width = 1 - 2 * cut` (here ", 1 - 2 * cut, ")",
             call. = FALSE)
-        band <- 0.5 - cut
+        band_width <- 1 - 2 * cut
     }
     ds <- ds_load("find_pairs", list(label = "find_pairs", clusters = clusters))
-    b <- ds_binarize(ds, band)
+    b <- ds_binarize(ds, band_width)
     if (!is.null(splits)) b <- restrict_splits(b, splits)
     use <- if (is.null(genes)) ds$analysis_genes else intersect(ds$analysis_genes, genes)
     limit <- if (is.finite(top)) as.integer(top) else Inf

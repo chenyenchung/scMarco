@@ -130,11 +130,12 @@ scmarco_app <- function(config = Sys.getenv("SCMARCO_CONFIG", "config.yaml"),
                     multiple = TRUE
                 ),
                 sliderInput(
-                    "band", "Ambiguity band (%)",
-                    min = 0, max = 49, step = 1, value = 30
+                    "band_width", "Ambiguity band width (%)",
+                    min = 0, max = 98, step = 2, value = 60
                 ),
                 helpText(
-                    "ON if P(On) \u2265 50% + band, OFF if P(On) \u2264 50% \u2212 band;",
+                    "The band is centered on 50%: at 60% wide, ON if P(On) \u2265 80%,",
+                    "OFF if P(On) \u2264 20%;",
                     "in between is ambiguous (gray) and never counts as ON or OFF.",
                     "Datasets from binarizer 1.1 also make calls ambiguous that its",
                     "checks flag (chains disagree, too few cells detecting the gene",
@@ -212,9 +213,9 @@ scmarco_server <- function(input, output, session, config) {
     # Dropdown choices for views that also show unimodal genes, labeled as such
     all_gene_choices <- reactive(gene_choices(ds(), all_genes()))
 
-    # Debounced: each distinct band is a full binarize, so don't run one per
+    # Debounced: each distinct band width is a full binarize, so don't run one per
     # intermediate slider position
-    band <- debounce(reactive(input$band / 100), 500)
+    band_width <- debounce(reactive(input$band_width / 100), 500)
 
     # Cluster metadata: the user picks which levels (config subset_by) to subset
     # by, and each picked level shows its own filter. Levels cascade coarse to
@@ -300,7 +301,7 @@ scmarco_server <- function(input, output, session, config) {
         sprintf("%d of %d clusters searched.", length(universe()), length(ds()$clusters))
     })
 
-    b <- reactive(restrict_clusters(ds_binarize(ds(), band()), universe()))
+    b <- reactive(restrict_clusters(ds_binarize(ds(), band_width()), universe()))
 
     # The cluster picker lists the clusters in scope; a new dataset starts empty
     shown_ds <- NULL
@@ -377,7 +378,7 @@ scmarco_server <- function(input, output, session, config) {
         idents = reactive(input$clusters_of_interest),
         required = required,
         min_n = min_n,
-        band = band,
+        band_width = band_width,
         split_label = reactive(ds()$split_label),
         split_plural = reactive(ds()$split_plural),
         scope = reactive(describe_scope(ds(), meta_filters())),

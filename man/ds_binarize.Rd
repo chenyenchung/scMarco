@@ -4,16 +4,18 @@
 \alias{ds_binarize}
 \title{Binarize a dataset at an ambiguity band}
 \usage{
-ds_binarize(ds, band, margin = NULL)
+ds_binarize(ds, band_width, margin = NULL)
 }
 \arguments{
 \item{ds}{A dataset from \code{\link[=ds_load]{ds_load()}}.}
 
-\item{band}{Half-width of the ambiguity band in [0, 0.5): ON when the
-probability is at least \code{0.5 + band}, OFF when it is at most
-\code{0.5 - band}. The app's default is 0.3.}
+\item{band_width}{Full width of the ambiguity band centered on P(On) =
+0.5, in [0, 1): ON when the probability is at least
+\code{0.5 + band_width / 2}, OFF when it is at most \code{0.5 - band_width / 2}.
+The app's default is 0.6 (ambiguous between 0.2 and 0.8).}
 
-\item{margin}{Deprecated: the former confidence margin, \code{0.5 - band}.}
+\item{margin}{Deprecated: the former confidence margin,
+\code{band_width = 1 - 2 * margin}.}
 }
 \value{
 A binarized dataset (see \code{\link[=binarize]{binarize()}}).
@@ -27,6 +29,6 @@ are cached with the dataset.
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, band = 0.4)
+b <- ds_binarize(ds, band_width = 0.8)
 dim(b$on)
 }

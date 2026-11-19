@@ -23,6 +23,6 @@ Clusters labeled by a gene combination
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, band = 0.4)
+b <- ds_binarize(ds, band_width = 0.8)
 combo_offtarget_clusters(b, b$genes[1:2])
 }

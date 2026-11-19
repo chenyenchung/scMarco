@@ -69,7 +69,7 @@ off-targets. A leak of about 1 or less is a single stray UMI.
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, band = 0.4)
+b <- ds_binarize(ds, band_width = 0.8)
 pair_offtargets(b, ident = b$clusters[1], required = character(0),
     min_n = 1, limit = 5)
 }

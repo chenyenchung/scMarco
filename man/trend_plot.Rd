@@ -38,7 +38,7 @@ otherwise.
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, band = 0.4)
+b <- ds_binarize(ds, band_width = 0.8)
 trend_plot(ds, ds$all_genes[1], highlight = ds$clusters[1:2],
     interactive = FALSE)
 }

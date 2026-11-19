@@ -98,8 +98,8 @@ level; there is no dataset-wide ON/OFF scale.
 
 \strong{Calls.} P(On) of a cluster is the posterior mean over draws
 (\code{summary = "mean"}); \code{"median"} gives binarizer 1.0's posterior median,
-which picks a side at random for broad genes. The ambiguity band (ON
-above 0.5 + band, OFF below 0.5 - band) is applied when the dataset is
+which picks a side at random for broad genes. The ambiguity band
+(\code{band_width} wide, centered on 0.5) is applied when the dataset is
 read (\code{\link[=binarize]{binarize()}}, the app's band slider). On top of it, these flags make
 a call ambiguous (attribute \code{flags}, one integer per gene x cluster, the
 sum of):

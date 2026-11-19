@@ -10,7 +10,7 @@ binarize(
   obs_cluster,
   splits,
   clusters,
-  band,
+  band_width,
   bimodal = NULL,
   flags = NULL,
   fold = NULL,
@@ -27,9 +27,11 @@ each row of \code{prob}.}
 
 \item{splits, clusters}{The full, ordered sets of splits and clusters.}
 
-\item{band}{Half-width of the ambiguity band around P(On) = 0.5, in
-[0, 0.5). At 0 there is no ambiguous band and ON is \code{prob > 0.5}.
-The default elsewhere in scMarco is 0.3 (ON at 0.8, OFF at 0.2).}
+\item{band_width}{Full width of the ambiguity band centered on P(On) =
+0.5, in [0, 1): ON at \code{prob >= 0.5 + band_width / 2}, OFF at
+\code{prob <= 0.5 - band_width / 2}. At 0 there is no ambiguous band and ON
+is \code{prob > 0.5}. The default elsewhere in scMarco is 0.6 (ambiguous
+between 0.2 and 0.8).}
 
 \item{bimodal}{Optional logical matrix, genes x splits: whether the
 mixture model called the gene bimodal in that split.}
@@ -46,14 +48,14 @@ fold over ambient RNA (\code{layers/fold_ambient}), used by
 bound of each gene's Ashman's D (\code{varm/call_ashman_D_lower}), used by
 \code{\link[=pair_offtargets]{pair_offtargets()}} to break ties.}
 
-\item{margin}{Deprecated: the former confidence margin, \code{0.5 - band}.}
+\item{margin}{Deprecated: the former confidence margin, \code{band_width = 1 - 2 * margin}.}
 }
 \value{
 An object of class \code{scmarco_binarized}: a list with the logical
 arrays \code{on} and \code{ambiguous} (genes x clusters x splits), the logical
 matrices \code{present} (clusters x splits), \code{bimodal} (genes x splits) and
 \code{anyon} (genes x clusters: ON or ambiguous in any split, see \code{\link[=any_on]{any_on()}}),
-\code{genes}, \code{clusters}, \code{splits}, \code{band}, \code{flags_applied} (whether
+\code{genes}, \code{clusters}, \code{splits}, \code{band_width}, \code{flags_applied} (whether
 \code{flags} were given), \code{flagged} (genes x clusters x splits integers: the
 flag that made a call ambiguous, 1, 2 or 4, else 0; \code{NULL} without
 \code{flags}), and \code{fold} (genes x clusters x splits, \code{NULL} without \code{fold})
@@ -65,9 +67,10 @@ calls. Most users get this from \code{\link[=ds_binarize]{ds_binarize()}}, which
 from a dataset and caches the result.
 }
 \details{
-A gene is ON in a cluster and split when its probability is at least
-\code{0.5 + band}, OFF when it is at most \code{0.5 - band}, and ambiguous in
-between (the ambiguity band).
+A gene is ON in a cluster and split when its probability is above the
+ambiguity band, OFF when it is below it, and ambiguous inside it. The band
+is centered on 0.5 and \code{band_width} wide: at 0.6 a gene is ON at P(On) >=
+0.8, OFF at <= 0.2, and ambiguous in between.
 Ambiguous calls never count as ON, but they do count as off-target
 expression. A gene the mixture model did not call bimodal in a split is
 neither ON nor ambiguous there.
@@ -82,7 +85,7 @@ prob <- matrix(c(0.95, 0.5, 0.02, 0.99), 2,
     dimnames = list(NULL, c("geneA", "geneB")))
 b <- binarize(prob, obs_split = c("adult", "adult"),
     obs_cluster = c("c1", "c2"), splits = "adult",
-    clusters = c("c1", "c2"), band = 0.4)
+    clusters = c("c1", "c2"), band_width = 0.8)
 b$on[, , "adult"]
 b$ambiguous[, , "adult"]
 }

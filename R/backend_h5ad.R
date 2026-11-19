@@ -447,7 +447,7 @@ ds_check_config <- function(datasets) {
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' ds$splits
 #' head(ds$cluster_labels)
 #' @export
@@ -572,24 +572,26 @@ ds_load <- function(id, entry) {
 #' are cached with the dataset.
 #'
 #' @param ds A dataset from [ds_load()].
-#' @param band Half-width of the ambiguity band in \[0, 0.5): ON when the
-#'   probability is at least `0.5 + band`, OFF when it is at most
-#'   `0.5 - band`. The app's default is 0.3.
-#' @param margin Deprecated: the former confidence margin, `0.5 - band`.
+#' @param band_width Full width of the ambiguity band centered on P(On) =
+#'   0.5, in \[0, 1): ON when the probability is at least
+#'   `0.5 + band_width / 2`, OFF when it is at most `0.5 - band_width / 2`.
+#'   The app's default is 0.6 (ambiguous between 0.2 and 0.8).
+#' @param margin Deprecated: the former confidence margin,
+#'   `band_width = 1 - 2 * margin`.
 #'
 #' @return A binarized dataset (see [binarize()]).
 #' @examples
 #' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 #' ds <- ds_load("example", list(label = "Example", clusters = ex))
-#' b <- ds_binarize(ds, band = 0.4)
+#' b <- ds_binarize(ds, band_width = 0.8)
 #' dim(b$on)
 #' @export
-ds_binarize <- function(ds, band, margin = NULL) {
-    band <- band_from_margin(if (missing(band)) NULL else band, margin)
-    cached(ds$binarized, format(band, nsmall = 3), size = 2, binarize(
+ds_binarize <- function(ds, band_width, margin = NULL) {
+    band_width <- width_from_margin(if (missing(band_width)) NULL else band_width, margin)
+    cached(ds$binarized, format(band_width, nsmall = 3), size = 2, binarize(
         ds$prob, ds$obs_split, ds$obs_cluster,
         splits = ds$splits, clusters = ds$clusters,
-        band = band, bimodal = ds$bimodal, flags = ds$flags, fold = ds$fold,
+        band_width = band_width, bimodal = ds$bimodal, flags = ds$flags, fold = ds$fold,
         ashman_D_lower = ds$ashman_D_lower
     ))
 }

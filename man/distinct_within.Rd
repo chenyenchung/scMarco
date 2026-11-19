@@ -34,7 +34,7 @@ any split) in the other clusters of \code{idents}.
 \examples{
 ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
 ds <- ds_load("example", list(label = "Example", clusters = ex))
-b <- ds_binarize(ds, band = 0.4)
+b <- ds_binarize(ds, band_width = 0.8)
 hits <- distinct_within(b, b$clusters[1:3], required = character(0),
     min_n = 1)
 head(hits)

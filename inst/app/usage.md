@@ -59,11 +59,13 @@ either to search.
 
 #### Ambiguity band
 
-A gene is **ON** in a cluster when its probability of being expressed is at
-least 50% plus the band, and **OFF** when it is at most 50% minus the band; in
-between it is **ambiguous**. With the default 30%, ON is ≥ 0.8, OFF is ≤ 0.2
-and (0.2, 0.8) is ambiguous. At 0% there is no ambiguous band and ON means
-greater than 0.5.
+The ambiguity band is a range of probabilities centered on 50%, and the slider
+sets its full width. A gene is **ON** in a cluster when its probability of
+being expressed is above the band, **OFF** when it is below it, and
+**ambiguous** inside it. With the default width of 60%, the band runs from
+20% to 80%: a cluster at P(On) = 0.85 is ON, one at 0.75 is ambiguous, and one
+at 0.15 is OFF. At 0% there is no ambiguous band and ON means greater than
+0.5.
 
 Ambiguous calls behave like `NA`: they never count as ON for the cluster you
 are finding markers for, but they do count as possible expression in the
