@@ -141,7 +141,7 @@ For one gene, the checked stages, sexes or species are stacked top to bottom
 the top panel is a histogram of
 cluster averages (how many clusters express the gene at each level) with the
 two Gaussians the mixture model fit, and the subtitle says whether the gene was
-called bimodal. The bottom panel is the resulting P(On) curve, which rises from
+called bimodal; red lines mark the clusters of interest. The bottom panel is the resulting P(On) curve, which rises from
 0 to 1 between the OFF and ON levels; arrows point to the clusters of interest
 on it, and the dotted lines mark the ambiguity band (ON above the upper
 one, OFF below the lower one). Shown only for

@@ -800,9 +800,10 @@ mixture_plot <- function(ds, gene, model, highlight = character(0), band = 0, ma
         )) +
         base +
         theme(legend.position = "top", legend.justification = "left")
+    # Clusters of interest: solid red, unlike the gray dotted band lines below
     if (nrow(pts) > 0) {
-        top <- top + geom_vline(xintercept = pts$x, linetype = "dashed",
-            color = "#1B1B1B", linewidth = 0.4)
+        top <- top + geom_vline(xintercept = pts$x, linetype = "solid",
+            color = "#D7191C", linewidth = 0.6)
     }
 
     curve <- data.frame(x = grid, y = mixture_p_on(grid, fit))

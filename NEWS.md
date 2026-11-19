@@ -69,6 +69,9 @@
   checkbox); the legend, when shown, is the key to every cluster's color.
 * `mixture_plot()` takes several models and stacks them top to bottom; in the
   app, checkboxes pick the stages, sexes or species to stack (all by default).
+* `mixture_plot()` marks the clusters of interest in the histogram with solid
+  red lines instead of dashed black ones, so they can't be mistaken for the
+  dotted ambiguity-band lines.
 * New synthetic example dataset `toy` (inst/extdata) with a cells file,
   reduction, cluster names and metadata, and mixture-model fits.
 * Fixed: a config without `gene_list` no longer fails to build the UI.
