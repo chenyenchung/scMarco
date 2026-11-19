@@ -64,6 +64,11 @@
   page with the dataset, the settings in use (with what each is), the genes
   binarized and why the others were not, chain agreement, the detection and
   ambient checks, the calls, known limitations and provenance.
+* `umap_plot()` labels only the clusters in `highlight` (the app's clusters
+  of interest) unless `label_all = TRUE` (the app's "Label all clusters"
+  checkbox); the legend, when shown, is the key to every cluster's color.
+* `mixture_plot()` takes several models and stacks them top to bottom; in the
+  app, checkboxes pick the stages, sexes or species to stack (all by default).
 * New synthetic example dataset `toy` (inst/extdata) with a cells file,
   reduction, cluster names and metadata, and mixture-model fits.
 * Fixed: a config without `gene_list` no longer fails to build the UI.

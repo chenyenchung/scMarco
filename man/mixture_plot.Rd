@@ -18,8 +18,9 @@ mixture_plot(
 
 \item{gene}{One gene.}
 
-\item{model}{A mixture model of the dataset (see
-\code{\link[=mixture_model_choices]{mixture_model_choices()}}).}
+\item{model}{One or more mixture models of the dataset (see
+\code{\link[=mixture_model_choices]{mixture_model_choices()}}). Several models are stacked top to bottom in
+the given order, one histogram and curve each.}
 
 \item{highlight}{Cluster IDs to label.}
 
@@ -29,7 +30,7 @@ mixture_plot(
 }
 \value{
 A ggplot object (a \code{\link[cowplot:plot_grid]{cowplot::plot_grid()}} of the curve and the
-cluster averages).
+cluster averages of each model).
 }
 \description{
 The fitted probability of expression as a function of cluster-average
@@ -44,5 +45,8 @@ ds <- ds_load("toy", list(
     cells = file.path(toy, "toy.cells.h5ad")
 ))
 mixture_plot(ds, "Kr", model = mixture_model_choices(ds)[[1]],
+    highlight = "1", band = 0.4)
+# Every model of the dataset, stacked
+mixture_plot(ds, "Kr", model = mixture_model_choices(ds),
     highlight = "1", band = 0.4)
 }

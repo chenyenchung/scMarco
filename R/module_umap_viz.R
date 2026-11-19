@@ -10,7 +10,11 @@ umap_viz_UI <- function(id) {
         conditionalPanel(
             condition = "input.viz_type == 'cluster'",
             ns = NS(id),
-            checkboxInput(NS(id, "show_legend"), "Show legend", value = FALSE)
+            checkboxInput(NS(id, "label_all"), "Label all clusters", value = FALSE),
+            checkboxInput(NS(id, "show_legend"), "Show legend", value = FALSE),
+            helpText("Only the clusters of interest are labeled unless",
+                "\"Label all clusters\" is checked; the legend is a key to every",
+                "cluster's color.")
         ),
         uiOutput(NS(id, "facet_ui")),
         actionButton(NS(id, "plot_umap"), "Plot"),
@@ -135,6 +139,7 @@ umap_viz_server <- function(id, ctx) {
                     list(ds = ds, key = key, name = name, color_by = input$viz_type,
                         gene = input$gene_selection, splits = splits, facet = facet,
                         show_legend = isTRUE(input$show_legend),
+                        label_all = isTRUE(input$label_all), highlight = ctx$idents(),
                         ncol = min(ncol, length(splits)))
                 }
             )
@@ -144,7 +149,8 @@ umap_viz_server <- function(id, ctx) {
                 shiny::req(r)
                 with_spinner("Plotting...", umap_plot(
                     r$ds, r$key, color_by = r$color_by, gene = r$gene, splits = r$splits,
-                    facet = r$facet, show_legend = r$show_legend, ncol = r$ncol
+                    facet = r$facet, show_legend = r$show_legend, ncol = r$ncol,
+                    highlight = r$highlight, label_all = r$label_all
                 ))
             })
 

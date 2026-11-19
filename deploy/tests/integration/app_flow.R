@@ -144,6 +144,7 @@ for (ds_id in intersect(names(config$datasets), strsplit(Sys.getenv("ONLY", past
               `umap-umap_selection` = choice, `umap-viz_type` = viz,
               `umap-gene_selection` = pick$gene, `umap-split_by_group` = TRUE,
               `umap-shown_splits` = shown, `umap-show_legend` = FALSE,
+              `umap-label_all` = TRUE,
               `umap-facet_ncol` = 1, `umap-plot_umap` = n_plot
             )
             render_ok(output$`umap-umap_plot`)

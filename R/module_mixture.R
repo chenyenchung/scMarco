@@ -14,7 +14,7 @@ mixture_UI <- function(id) {
 
 mixture_output <- function(id) {
     tagList(
-        plotOutput(NS(id, "mixture_plot"), height = "850px")
+        plotOutput(NS(id, "mixture_plot"), height = "auto")
     )
 }
 
@@ -30,15 +30,17 @@ mixture_server <- function(id, ctx) {
 
             models <- reactive(mixture_model_choices(ctx$ds()))
 
-            # One choice per mixture model: a split, or splits modeled together
+            # One checkbox per mixture model (a split, or splits modeled
+            # together); the checked ones are stacked top to bottom
             output$model_ui <- renderUI({
                 choices <- models()
                 if (length(choices) < 2) return(NULL)
-                selected <- isolate(input$model)
-                if (is.null(selected) || !selected %in% choices) selected <- choices[[1]]
+                selected <- intersect(isolate(input$model), choices)
+                if (length(selected) == 0) selected <- choices
                 joint <- any(grepl(" + ", names(choices), fixed = TRUE))
-                label <- if (joint) "Which model?" else paste0("Which ", ctx$split_label(), "?")
-                selectInput(NS(id, "model"), label, choices = choices, selected = selected)
+                label <- if (joint) "Models to stack:" else
+                    paste0(tools::toTitleCase(ctx$split_plural()), " to stack:")
+                checkboxGroupInput(NS(id, "model"), label, choices = choices, selected = selected)
             })
 
             request <- eventReactive(
@@ -49,11 +51,13 @@ mixture_server <- function(id, ctx) {
                     )
                     if (!ok) return(NULL)
                     choices <- models()
-                    model <- if (is.null(input$model) || !input$model %in% choices) {
-                        choices[[1]]
-                    } else {
-                        input$model
-                    }
+                    # In dataset order; a single model has no checkboxes
+                    model <- if (length(choices) < 2) choices else choices[choices %in% input$model]
+                    ok <- require_or_modal(
+                        length(model) > 0, paste("No", ctx$split_label(), "selected"),
+                        paste0("Please check at least one ", ctx$split_label(), " to plot.")
+                    )
+                    if (!ok) return(NULL)
                     list(ds = ctx$ds(), gene = input$gene_of_interest, model = model,
                         highlight = ctx$idents(), band = ctx$band())
                 }
@@ -75,17 +79,25 @@ mixture_server <- function(id, ctx) {
                 ))
             })
 
-            output$mixture_plot <- renderPlot(mixture_plot_obj())
+            n_models <- reactive({
+                r <- request()
+                if (is.null(r)) 1 else length(r$model)
+            })
+
+            output$mixture_plot <- renderPlot(
+                mixture_plot_obj(),
+                height = function() 850 * n_models()
+            )
 
             ggdownload_server(
                 "dl_mixture",
                 filename = reactive({
                     r <- request()
-                    c("mixture", r$gene, mixture_model_splits(r$ds, r$model),
-                        cluster_label(r$ds, r$highlight))
+                    splits <- unlist(lapply(r$model, mixture_model_splits, ds = r$ds))
+                    c("mixture", r$gene, splits, cluster_label(r$ds, r$highlight))
                 }),
                 payload = mixture_plot_obj,
-                height = 1400,
+                height = function() 1400 * n_models(),
                 width = 1500
             )
         }

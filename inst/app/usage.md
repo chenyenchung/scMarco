@@ -130,9 +130,15 @@ Plot any stored reduction colored by a gene's log-normalized expression, by
 cluster, or by stage, sex or species. Cells are limited to the checked items of
 **Must be ON in these …**; with none checked, every cell is shown.
 
+Colored by cluster, only the clusters of interest are labeled on the plot;
+check **Label all clusters** to label every cluster. **Show legend** adds a key
+to every cluster's color.
+
 ### Mixture model
 
-For one gene in one stage, sex or species, the top panel is a histogram of
+For one gene, the checked stages, sexes or species are stacked top to bottom
+(all of them by default), so every fit can be checked in one plot. For each,
+the top panel is a histogram of
 cluster averages (how many clusters express the gene at each level) with the
 two Gaussians the mixture model fit, and the subtitle says whether the gene was
 called bimodal. The bottom panel is the resulting P(On) curve, which rises from

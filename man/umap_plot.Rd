@@ -12,7 +12,9 @@ umap_plot(
   splits = ds$splits,
   facet = FALSE,
   show_legend = FALSE,
-  ncol = NULL
+  ncol = NULL,
+  highlight = character(0),
+  label_all = FALSE
 )
 }
 \arguments{
@@ -31,10 +33,14 @@ split.}
 
 \item{facet}{One facet per split.}
 
-\item{show_legend}{Show the color legend (clusters are labeled on the
-plot).}
+\item{show_legend}{Show the color legend, a key of every cluster's color.}
 
 \item{ncol}{Facets per row (\code{NULL} lets \code{\link[ggplot2:facet_wrap]{ggplot2::facet_wrap()}} decide).}
+
+\item{highlight}{Cluster IDs to label on the plot (with
+\code{color_by = "cluster"}).}
+
+\item{label_all}{Label every cluster instead of only \code{highlight}.}
 }
 \value{
 A ggplot object.
@@ -49,5 +55,7 @@ ds <- ds_load("toy", list(
     cells = file.path(toy, "toy.cells.h5ad")
 ))
 umap_plot(ds, "X_umap_full", color_by = "gene", gene = "Kr")
-umap_plot(ds, "X_umap_full", color_by = "cluster", facet = TRUE)
+umap_plot(ds, "X_umap_full", color_by = "cluster", facet = TRUE,
+    highlight = c("1", "4"))
+umap_plot(ds, "X_umap_full", color_by = "cluster", label_all = TRUE)
 }

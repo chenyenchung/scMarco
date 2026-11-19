@@ -554,8 +554,10 @@ split_color_scale <- function(ds, ...) {
 #' @param gene One gene, for `color_by = "gene"`.
 #' @param splits Splits whose cells are shown.
 #' @param facet One facet per split.
-#' @param show_legend Show the color legend (clusters are labeled on the
-#'   plot).
+#' @param show_legend Show the color legend, a key of every cluster's color.
+#' @param highlight Cluster IDs to label on the plot (with
+#'   `color_by = "cluster"`).
+#' @param label_all Label every cluster instead of only `highlight`.
 #' @param ncol Facets per row (`NULL` lets [ggplot2::facet_wrap()] decide).
 #'
 #' @return A ggplot object.
@@ -566,11 +568,14 @@ split_color_scale <- function(ds, ...) {
 #'     cells = file.path(toy, "toy.cells.h5ad")
 #' ))
 #' umap_plot(ds, "X_umap_full", color_by = "gene", gene = "Kr")
-#' umap_plot(ds, "X_umap_full", color_by = "cluster", facet = TRUE)
+#' umap_plot(ds, "X_umap_full", color_by = "cluster", facet = TRUE,
+#'     highlight = c("1", "4"))
+#' umap_plot(ds, "X_umap_full", color_by = "cluster", label_all = TRUE)
 #' @export
 umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
                       gene = NULL, splits = ds$splits, facet = FALSE,
-                      show_legend = FALSE, ncol = NULL) {
+                      show_legend = FALSE, ncol = NULL,
+                      highlight = character(0), label_all = FALSE) {
     color_by <- match.arg(color_by)
     obs <- ds_cells_obs(ds)
     per_split <- !is.null(names(key))
@@ -588,6 +593,7 @@ umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
     }
     df <- data.frame(
         dim1 = coords[, 1], dim2 = coords[, 2],
+        id = as.character(obs$cluster),
         cluster = cluster_label(ds, obs$cluster),
         split = factor(as.character(obs$split), levels = ds$splits)
     )
@@ -626,20 +632,23 @@ umap_plot <- function(ds, key, color_by = c("gene", "cluster", "split"),
             split_color_scale(ds, name = split_label)
     } else {
         q <- ggplot(df, aes(dim1, dim2, color = cluster)) +
-            geom_point(size = 0.8, alpha = 0.7)
-        if (show_legend) {
-            q + scale_color_discrete(name = "Cluster")
-        } else {
+            geom_point(size = 0.8, alpha = 0.7) +
+            scale_color_discrete(name = "Cluster",
+                guide = if (show_legend) "legend" else "none")
+        # Labels at each cluster's center: every cluster, or the clusters of interest
+        labeled <- if (label_all) df else df[df$id %in% as.character(highlight), , drop = FALSE]
+        if (nrow(labeled) > 0) {
             group_cols <- if (facet) c("split", "cluster") else "cluster"
             centers <- aggregate(
-                df[, c("dim1", "dim2")], by = df[, group_cols, drop = FALSE],
+                labeled[, c("dim1", "dim2")], by = labeled[, group_cols, drop = FALSE],
                 FUN = function(v) mean(v, trim = 0.1)
             )
-            q + ggrepel::geom_text_repel(
+            q <- q + ggrepel::geom_text_repel(
                 data = centers, aes(dim1, dim2, label = cluster), color = "black",
                 size = 5, max.overlaps = Inf, inherit.aes = FALSE
-            ) + scale_color_discrete(guide = "none")
+            )
         }
+        q
     }
     # Separate reductions share no coordinates, so each facet gets its own axes
     if (facet) {
@@ -697,14 +706,15 @@ mixture_p_on <- function(x, fit) {
 #'
 #' @param ds A dataset from [ds_load()].
 #' @param gene One gene.
-#' @param model A mixture model of the dataset (see
-#'   [mixture_model_choices()]).
+#' @param model One or more mixture models of the dataset (see
+#'   [mixture_model_choices()]). Several models are stacked top to bottom in
+#'   the given order, one histogram and curve each.
 #' @param highlight Cluster IDs to label.
 #' @param band Ambiguity band, as in [ds_binarize()].
 #' @param margin Deprecated: the former confidence margin, `0.5 - band`.
 #'
 #' @return A ggplot object (a [cowplot::plot_grid()] of the curve and the
-#'   cluster averages).
+#'   cluster averages of each model).
 #' @examples
 #' toy <- system.file("extdata", package = "scMarco")
 #' ds <- ds_load("toy", list(
@@ -713,9 +723,20 @@ mixture_p_on <- function(x, fit) {
 #' ))
 #' mixture_plot(ds, "Kr", model = mixture_model_choices(ds)[[1]],
 #'     highlight = "1", band = 0.4)
+#' # Every model of the dataset, stacked
+#' mixture_plot(ds, "Kr", model = mixture_model_choices(ds),
+#'     highlight = "1", band = 0.4)
 #' @export
 mixture_plot <- function(ds, gene, model, highlight = character(0), band = 0, margin = NULL) {
     if (!is.null(margin)) band <- band_from_margin(NULL, margin)
+    model <- unname(model)
+    if (length(model) == 0) return(message_plot("No mixture model selected."))
+    if (length(model) > 1) {
+        panels <- lapply(model, function(m) {
+            mixture_plot(ds, gene, m, highlight = highlight, band = band)
+        })
+        return(cowplot::plot_grid(plotlist = panels, ncol = 1))
+    }
     fit <- ds_mixture_fit(ds, gene, model)
     if (is.null(fit)) return(message_plot("This dataset has no mixture-model fit."))
     splits <- mixture_model_splits(ds, model)
