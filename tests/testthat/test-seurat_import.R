@@ -272,6 +272,23 @@ test_that("legacy wide tables split into per-split tables", {
   expect_error(legacy_wide_to_split_tables(wide), "'<split>@<cluster>'.*oops")
 })
 
+test_that("a joint call_mixture() table keeps its calls data in every split", {
+  wide <- data.frame(`M@1` = c(1, 0), `M@2` = c(0, 1), `F@1` = c(1, 1), exprType = "bimodal",
+                     check.names = FALSE, row.names = c("g1", "g2"))
+  flags <- matrix(c(0L, 2L, 4L, 0L, 1L, 0L), 2, dimnames = list(c("g1", "g2"), c("M@1", "M@2", "F@1")))
+  fold <- flags * 1.5
+  attr(wide, "flags") <- flags
+  attr(wide, "fold_ambient") <- fold
+  attr(wide, "binarization") <- list(bh_q = 0.1)
+  attr(wide, "scmarco_binarizer") <- SCMARCO_BINARIZER_VERSION
+  t <- legacy_wide_to_split_tables(wide)
+  expect_equal(attr(t$M, "flags"), flags[, c("M@1", "M@2")], ignore_attr = "dimnames")
+  expect_equal(colnames(attr(t$M, "flags")), c("1", "2"))
+  expect_equal(attr(t$F, "fold_ambient")[, "1"], fold[, "F@1"])
+  expect_equal(attr(t$F, "binarization"), list(bh_q = 0.1))
+  expect_equal(table_binarizer(t$F), SCMARCO_BINARIZER_VERSION)
+})
+
 test_that("assemble_prob keeps mixture parameters and modeling units", {
   obs_split <- c("Male", "Male", "Male", "Female")
   obs_cluster <- c("1", "2", "10", "1")

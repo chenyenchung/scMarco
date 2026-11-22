@@ -271,7 +271,14 @@ prob_binarizer <- function(tables, external = FALSE) {
 
 legacy_wide_to_split_tables <- function(df) {
     # Wide table (one model fit across splits) -> per-split tables. Its single
-    # exprType (and QC columns) apply to every split.
+    # exprType (and QC columns) apply to every split. A wide table from
+    # call_mixture() (a joint fit) keeps its binarizer version and parameters
+    # in every split's table, and its flags and fold_ambient matrices are cut
+    # to the split's clusters.
+    calls_attr <- attributes(df)[c("scmarco_binarizer", "binarization")]
+    calls_attr <- calls_attr[!vapply(calls_attr, is.null, logical(1))]
+    by_cluster <- attributes(df)[c("flags", "fold_ambient")]
+    by_cluster <- by_cluster[!vapply(by_cluster, is.null, logical(1))]
     text_matrix <- is.matrix(df) && is.character(df)
     df <- as.data.frame(df, check.names = FALSE, stringsAsFactors = FALSE)
     qc <- intersect(colnames(df), QC_COLS)
@@ -288,7 +295,16 @@ legacy_wide_to_split_tables <- function(df) {
         out <- df[, c(prob_cols[col_split == s], qc), drop = FALSE]
         colnames(out) <- c(col_cluster[col_split == s], qc)
         # keep the raw model output's form, so numbers stored as text are parsed
-        if (text_matrix) as.matrix(out) else out
+        if (text_matrix) out <- as.matrix(out)
+        for (n in names(calls_attr)) attr(out, n) <- calls_attr[[n]]
+        for (n in names(by_cluster)) {
+            m <- by_cluster[[n]]
+            keep <- colnames(m)[startsWith(colnames(m), paste0(s, "@"))]
+            m <- m[, keep, drop = FALSE]
+            colnames(m) <- substring(keep, nchar(s) + 2)
+            attr(out, n) <- m
+        }
+        out
     })
     names(tables) <- unique(col_split)
     tables
