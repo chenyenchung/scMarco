@@ -26,7 +26,9 @@ fitted gene and cluster, or \code{NULL} to skip the detection floor and the
 ambient check.}
 
 \item{bh_q}{False discovery rate (Benjamini-Hochberg) at which a gene's
-bimodal fit counts as better than its unimodal one.}
+bimodal fit counts as better than its unimodal one, in (0, 1]. \code{1} turns
+the filter off: every gene whose bimodal fit has the higher elpd passes
+this check, for example to apply your own cut to \code{elpd.z} or \code{elpd.q}.}
 
 \item{min_D}{Smallest Ashman's D of a binarized gene.}
 
@@ -82,7 +84,8 @@ the values in use are printed and recorded with the table.
 \itemize{
 \item its bimodal fit beats the unimodal one: z = elpd difference / its SE,
 one-sided normal p, Benjamini-Hochberg over the split's genes, q <
-\code{bh_q};
+\code{bh_q} (with \code{bh_q = 1} there is no false-discovery filter and an elpd
+difference above 0 is enough);
 \item its ON and OFF states are apart: Ashman's D, (ON level - OFF level) /
 within-state SD (posterior median over draws), is at least \code{min_D};
 \item its chains agree: fewer than \code{reject_spread_frac} of its clusters have a

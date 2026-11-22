@@ -615,7 +615,8 @@ merge_mixture_fits <- function(...) {
 #' **Binarized genes.** A gene is binarized when all of these hold:
 #' - its bimodal fit beats the unimodal one: z = elpd difference / its SE,
 #'   one-sided normal p, Benjamini-Hochberg over the split's genes, q <
-#'   `bh_q`;
+#'   `bh_q` (with `bh_q = 1` there is no false-discovery filter and an elpd
+#'   difference above 0 is enough);
 #' - its ON and OFF states are apart: Ashman's D, (ON level - OFF level) /
 #'   within-state SD (posterior median over draws), is at least `min_D`;
 #' - its chains agree: fewer than `reject_spread_frac` of its clusters have a
@@ -651,7 +652,9 @@ merge_mixture_fits <- function(...) {
 #'   fitted gene and cluster, or `NULL` to skip the detection floor and the
 #'   ambient check.
 #' @param bh_q False discovery rate (Benjamini-Hochberg) at which a gene's
-#'   bimodal fit counts as better than its unimodal one.
+#'   bimodal fit counts as better than its unimodal one, in (0, 1]. `1` turns
+#'   the filter off: every gene whose bimodal fit has the higher elpd passes
+#'   this check, for example to apply your own cut to `elpd.z` or `elpd.q`.
 #' @param min_D Smallest Ashman's D of a binarized gene.
 #' @param spread_cutoff Chain spread of P(On) above which a cluster's call is
 #'   ambiguous.
@@ -712,13 +715,14 @@ call_mixture <- function(fit, ambient = NULL, bh_q = 0.10, min_D = 2, spread_cut
                          on_floor = 0.05, ambient_log2fc = 3, ambient_alpha = 1e-3) {
     check_mixture(fit)
     summary <- match.arg(summary)
-    check_fraction <- function(x, name, open = TRUE) {
+    check_fraction <- function(x, name, open = TRUE, one = FALSE) {
         if (!is.numeric(x) || length(x) != 1 || is.na(x) || x < 0 || x > 1 ||
-            (open && (x == 0 || x == 1))) {
-            fail(name, " must be one number in ", if (open) "(0, 1)" else "[0, 1]")
+            (open && (x == 0 || (x == 1 && !one)))) {
+            fail(name, " must be one number in ",
+                 if (!open) "[0, 1]" else if (one) "(0, 1]" else "(0, 1)")
         }
     }
-    check_fraction(bh_q, "bh_q")
+    check_fraction(bh_q, "bh_q", one = TRUE)
     check_fraction(spread_cutoff, "spread_cutoff", open = FALSE)
     check_fraction(reject_spread_frac, "reject_spread_frac")
     check_fraction(on_floor, "on_floor", open = FALSE)
@@ -766,7 +770,8 @@ call_mixture <- function(fit, ambient = NULL, bh_q = 0.10, min_D = 2, spread_cut
     diff_se <- pick(function(g) g$elpd$diff_se)
     z <- ifelse(diff_se > 0, diff / diff_se, sign(diff) * Inf)
     q <- stats::p.adjust(stats::pnorm(z, lower.tail = FALSE), method = "BH")
-    pass_elpd <- diff > 0 & q < bh_q
+    # bh_q = 1: no false-discovery filter (q < 1 would still drop genes at q = 1)
+    pass_elpd <- diff > 0 & (bh_q >= 1 | q < bh_q)
     if (v10) {
         D <- pick(function(g) (g$bimodal$on_level - g$bimodal$off_level) / g$bimodal$sd)
         D_lower <- rep(NA_real_, length(genes))
@@ -790,9 +795,14 @@ call_mixture <- function(fit, ambient = NULL, bh_q = 0.10, min_D = 2, spread_cut
 
     z_cut <- if (any(pass_elpd)) min(z[pass_elpd]) else NA_real_
     message(sprintf("%d of %d genes are binarized:", sum(binarized), length(genes)))
-    message(sprintf(paste0("  %d beat the unimodal fit at a false discovery rate of %s ",
-        "(Benjamini-Hochberg; elpd z >= %s; set bh_q to change)"), sum(pass_elpd),
-        format(bh_q), if (is.na(z_cut)) "-" else sprintf("%.2f", z_cut)))
+    if (bh_q >= 1) {
+        message(sprintf(paste0("  %d beat the unimodal fit (elpd difference > 0; no false ",
+            "discovery filter, bh_q = 1)"), sum(pass_elpd)))
+    } else {
+        message(sprintf(paste0("  %d beat the unimodal fit at a false discovery rate of %s ",
+            "(Benjamini-Hochberg; elpd z >= %s; set bh_q to change)"), sum(pass_elpd),
+            format(bh_q), if (is.na(z_cut)) "-" else sprintf("%.2f", z_cut)))
+    }
     message(sprintf("  %d of them have Ashman's D below %s (set min_D to change)",
         sum(pass_elpd & !pass_D), format(min_D)))
     if (!v10) {

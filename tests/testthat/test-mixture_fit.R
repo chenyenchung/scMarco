@@ -130,7 +130,8 @@ test_that("call_mixture flags clusters below the detection floor or above ambien
 
 test_that("call_mixture checks its parameters", {
   fit <- fake_mixture()
-  expect_error(call_mixture(fit, bh_q = 0), "bh_q must be one number in \\(0, 1\\)")
+  expect_error(call_mixture(fit, bh_q = 0), "bh_q must be one number in \\(0, 1\\]")
+  expect_error(call_mixture(fit, bh_q = 1.5), "bh_q must be one number in \\(0, 1\\]")
   expect_error(call_mixture(fit, spread_cutoff = 2), "spread_cutoff must be")
   expect_error(call_mixture(fit, min_D = -1), "min_D must be one number of at least 0")
   expect_error(call_mixture(fit, summary = "mode"), "should be one of")
@@ -338,4 +339,18 @@ test_that("fit_mixture checks n_chains_bimodal", {
                "whole number of at least 2")
   expect_error(fit_mixture(lognorm, cluster = c("1", "1", "2", "2"), n_chains_bimodal = 2.5),
                "whole number of at least 2")
+})
+
+test_that("call_mixture with bh_q = 1 has no false-discovery filter", {
+  fit <- fake_mixture()   # geneC: elpd difference 1 +- 2, fails the default q < 0.1
+  strict <- suppressMessages(call_mixture(fit))
+  off <- suppressMessages(call_mixture(fit, bh_q = 1))
+  diff <- vapply(fit$fits, function(g) g$elpd$diff, numeric(1))
+  # every gene with a positive elpd difference passes the evidence check
+  expect_identical(is.na(off$not.binarized) | off$not.binarized != "elpd",
+                   unname(diff > 0))
+  expect_false(identical(off$not.binarized, strict$not.binarized))
+  expect_identical(attr(off, "binarization")$bh_q, 1)
+  msgs <- testthat::capture_messages(call_mixture(fit, bh_q = 1))
+  expect_match(msgs, "no false discovery filter, bh_q = 1", all = FALSE)
 })
