@@ -12,7 +12,10 @@ find_pairs(
   min_n = 1,
   top = 20,
   cores = 1,
-  cut = NULL
+  cut = NULL,
+  splits = NULL,
+  genes = NULL,
+  max_onon = NULL
 )
 }
 \arguments{
@@ -27,18 +30,30 @@ ON above P(On) = 0.5 with no ambiguous band.}
 \item{required, min_n}{Both genes must be ON in every \code{required} split and
 in at least \code{min_n} splits.}
 
-\item{top}{Maximum number of pairs per cluster.}
+\item{top}{Maximum number of pairs per cluster (\code{Inf} for all).}
 
 \item{cores}{Number of clusters ranked at once, in forked processes
 (\code{\link[parallel:mclapply]{parallel::mclapply()}}); one on Windows, which cannot fork. The result
 does not depend on it.}
 
 \item{cut}{Deprecated: the former confidence margin, \code{0.5 - band}.}
+
+\item{splits}{Optional splits to search, e.g. one stage: genes are ON and
+clusters are off-targets only by their calls there (see
+\code{\link[=restrict_splits]{restrict_splits()}}); clusters absent from them are not ranked.}
+
+\item{genes}{Optional genes to choose pairs from (e.g. genes with a driver
+line); default: every gene used for marker finding.}
+
+\item{max_onon}{Optional number: per cluster, every pair with at most this
+many ON-ON off-targets, before \code{top} applies (see \code{\link[=pair_offtargets]{pair_offtargets()}}).}
 }
 \value{
 A data.frame with columns \code{cluster} (ID), \code{cluster_name} (\code{NA}
-when unnamed), \code{gene1}, \code{gene2}, \code{offtargets} (other clusters in which
-both genes are ON or ambiguous in any split), \code{separation},
+when unnamed), \code{gene1}, \code{gene2}, \code{onon_offtargets} (other clusters in
+which both genes are ON), \code{ambiguous_offtargets} (other clusters in which
+neither is OFF and at least one is ambiguous), \code{offtargets} (their sum),
+\code{separation},
 \code{target_fold}, \code{worst_leak}, \code{ashman_D_lower} (see \code{\link[=pair_offtargets]{pair_offtargets()}};
 \code{NA} for datasets without the binarizer 1.1 ranking data) and
 \code{single_offtargets}, best first per cluster; invisibly when \code{out} is

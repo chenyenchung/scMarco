@@ -95,7 +95,8 @@ find_exp_server <- function(id, ctx) {
                 }
                 tbl <- res$pairs
                 labels <- c(gene1 = "Gene 1", gene2 = "Gene 2",
-                    offtargets = "Clusters where both are ON or ambiguous",
+                    onon_offtargets = "Clusters where both are ON",
+                    ambiguous_offtargets = "More clusters where both may be ON (ambiguous)",
                     separation = "Separation (log2 over ambient)",
                     target_fold = "Target strength", worst_leak = "Worst leak",
                     ashman_D_lower = "Ashman's D (lower bound)",

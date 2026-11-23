@@ -103,6 +103,46 @@ test_that("pair_offtargets breaks ties by separation, then Ashman's D", {
   expect_identical(paste(res$gene1, res$gene2), c("g1 g2", "g1 g3", "g2 g3"))
 })
 
+test_that("pairs rank by ON-ON off-targets before ambiguous ones", {
+  cl <- c("T", "A", "B", "C")
+  #               g1    g2    g3
+  prob <- rbind(c(0.95, 0.95, 0.95),   # T
+                c(0.95, 0.95, 0.02),   # A: g1 + g2 both ON
+                c(0.95, 0.02, 0.5),    # B: g1 ON, g3 ambiguous
+                c(0.5, 0.02, 0.95))    # C: g1 ambiguous, g3 ON
+  colnames(prob) <- paste0("g", 1:3)
+  b <- binarize(prob, rep("s", 4), cl, "s", cl, band = 0.3)
+  res <- pair_offtargets(b, "T", character(0), 1)
+  # by all off-targets g1+g2 (1) would come before g1+g3 (2); a confident
+  # off-target ranks below any number of ambiguous ones
+  expect_identical(paste(res$gene1, res$gene2), c("g2 g3", "g1 g3", "g1 g2"))
+  expect_equal(res$onon_offtargets, c(0, 0, 1))
+  expect_equal(res$ambiguous_offtargets, c(0, 2, 0))
+  expect_equal(res$offtargets, res$onon_offtargets + res$ambiguous_offtargets)
+  # every pair with no confident off-target
+  all0 <- pair_offtargets(b, "T", character(0), 1, limit = Inf, max_onon = 0)
+  expect_identical(paste(all0$gene1, all0$gene2), c("g2 g3", "g1 g3"))
+  expect_identical(pair_offtargets(b, "T", character(0), 1, limit = 1), res[1, ])
+  # no pair within max_onon: an empty table, not an error
+  none <- pair_offtargets(b, "T", character(0), 1, limit = Inf, max_onon = -1)
+  expect_identical(none, empty_pairs())
+  expect_identical(pair_offtargets(b, "T", character(0), 1, first = "g1", max_onon = -1),
+                   empty_pairs())
+})
+
+test_that("restrict_splits searches only the kept splits", {
+  b <- toy()
+  s3 <- restrict_splits(b, "s3")
+  expect_identical(s3$splits, "s3")
+  expect_identical(s3$clusters, c("A", "B"))   # C has no cells in s3
+  expect_identical(s3$on["g1", , "s3"], c(A = TRUE, B = FALSE))
+  # g2 is ON in B only in s1, so it is no off-target of A within s2 + s3
+  expect_equal(unname(offtarget_counts(restrict_splits(b, c("s2", "s3")), "g2", "A")), 0)
+  expect_equal(unname(offtarget_counts(b, "g2", "A")), 1)
+  expect_identical(restrict_splits(b, b$splits), b)
+  expect_error(restrict_splits(b, "s9"), "Unknown split")
+})
+
 test_that("target_genes applies required splits AND min_n", {
   b <- toy()
   expect_setequal(target_genes(b, "A", character(0), 1), c("g1", "g2", "g4"))

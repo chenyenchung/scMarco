@@ -221,6 +221,44 @@ restrict_clusters <- function(b, keep) {
     b
 }
 
+#' Limit a binarized dataset to some splits
+#'
+#' Every search on the result sees only the splits in `keep`: a gene is ON,
+#' and a cluster is an off-target, only by its calls there. Clusters with no
+#' cells in any of those splits are dropped. For example, `keep = "P40"`
+#' searches one stage as if it were the whole dataset.
+#'
+#' @param b A binarized dataset from [ds_binarize()] or [binarize()].
+#' @param keep Splits to keep; the dataset's order is kept.
+#'
+#' @return A binarized dataset with only the splits in `keep`.
+#' @seealso [restrict_clusters()]
+#' @examples
+#' ex <- system.file("extdata", "example.clusters.h5ad", package = "scMarco")
+#' ds <- ds_load("example", list(label = "Example", clusters = ex))
+#' b <- ds_binarize(ds, band = 0.4)
+#' one <- restrict_splits(b, b$splits[1])
+#' one$splits
+#' @export
+restrict_splits <- function(b, keep) {
+    unknown <- setdiff(keep, b$splits)
+    if (length(unknown) > 0) stop("Unknown split(s): ", paste(unknown, collapse = ", "))
+    keep <- b$splits[b$splits %in% keep]
+    if (identical(keep, b$splits)) return(b)
+    b$on <- b$on[, , keep, drop = FALSE]
+    b$ambiguous <- b$ambiguous[, , keep, drop = FALSE]
+    b$present <- b$present[, keep, drop = FALSE]
+    b$bimodal <- b$bimodal[, keep, drop = FALSE]
+    if (!is.null(b$fold)) b$fold <- b$fold[, , keep, drop = FALSE]
+    if (!is.null(b$flagged)) b$flagged <- b$flagged[, , keep, drop = FALSE]
+    if (!is.null(b$ashman_D_lower)) {
+        b$ashman_D_lower <- b$ashman_D_lower[, intersect(keep, colnames(b$ashman_D_lower)), drop = FALSE]
+    }
+    b$splits <- keep
+    b$anyon <- anyon_matrix(b$on, b$ambiguous)
+    restrict_clusters(b, b$clusters[rowSums(b$present) > 0])
+}
+
 check_split_args <- function(b, required, min_n) {
     unknown <- setdiff(required, b$splits)
     if (length(unknown) > 0) {
@@ -454,6 +492,7 @@ top_per_cluster_capped <- function(tbl, n, max_genes) {
 
 empty_pairs <- function() {
     data.frame(gene1 = character(0), gene2 = character(0),
+        onon_offtargets = integer(0), ambiguous_offtargets = integer(0),
         offtargets = integer(0), separation = numeric(0), target_fold = numeric(0),
         worst_leak = numeric(0), ashman_D_lower = numeric(0),
         single_offtargets = integer(0))
@@ -514,12 +553,16 @@ pair_separation <- function(b, ident, cand, idx, chunk = 5000) {
 
 #' Rank gene pairs for a cluster
 #'
-#' Ranks pairs of genes that both pass the split criteria in `ident` by the
-#' number of other clusters in which both genes are ON or ambiguous (in any
-#' split): the off-targets of an intersectional (e.g. split-GAL4)
-#' combination.
+#' Ranks pairs of genes that both pass the split criteria in `ident` by
+#' their off-targets, the other clusters an intersectional (e.g. split-GAL4)
+#' combination would also label: first by the **ON-ON off-targets**
+#' (`onon_offtargets`), clusters where both genes are confidently ON (in some
+#' split), then by the **ambiguous off-targets** (`ambiguous_offtargets`),
+#' clusters where neither gene is OFF but at least one is only ambiguous. A
+#' pair whose only off-targets are ambiguous comes before any pair with a
+#' confident one.
 #'
-#' Ties are broken by the binarizer 1.1 ranking data when `b` has it (from
+#' Remaining ties are broken by the binarizer 1.1 ranking data when `b` has it (from
 #' [ds_binarize()] of a dataset binarized with [call_mixture()] tables):
 #' first by **separation**, the pair's target strength minus its worst leak,
 #' in log2 fold over ambient RNA (log2((UMIs + 1) / (expected ambient UMIs +
@@ -537,10 +580,15 @@ pair_separation <- function(b, ident, cand, idx, chunk = 5000) {
 #'   (may be empty).
 #' @param min_n Minimum number of splits in which a gene must be ON.
 #' @param first Optional gene: only pairs containing it are returned.
-#' @param limit Maximum number of pairs returned.
+#' @param limit Maximum number of pairs returned (`Inf` for all).
 #' @param genes Genes to consider (default: every gene of `b`).
+#' @param max_onon Optional number: return every pair with at most this
+#'   many ON-ON off-targets, however many there are, before `limit` applies;
+#'   e.g. `max_onon = 0, limit = Inf` gives every pair with no confident
+#'   off-target.
 #'
-#' @return A data.frame with columns `gene1`, `gene2`, `offtargets`,
+#' @return A data.frame with columns `gene1`, `gene2`, `onon_offtargets`,
+#'   `ambiguous_offtargets`, `offtargets` (their sum),
 #'   `separation`, `target_fold`, `worst_leak`, `ashman_D_lower` (`NA`
 #'   without the ranking data) and `single_offtargets` (the off-targets of
 #'   each gene on its own, summed), best first.
@@ -553,7 +601,7 @@ pair_separation <- function(b, ident, cand, idx, chunk = 5000) {
 #'     min_n = 1, limit = 5)
 #' @export
 pair_offtargets <- function(b, ident, required, min_n, first = NULL,
-                            limit = 50, genes = b$genes) {
+                            limit = 50, genes = b$genes, max_onon = NULL) {
     cand <- target_genes(b, ident, required, min_n, genes = genes)
     if (!is.null(first)) {
         if (!first %in% cand) {
@@ -567,6 +615,15 @@ pair_offtargets <- function(b, ident, required, min_n, first = NULL,
     others <- setdiff(b$clusters, ident)
     a <- any_on(b, genes = cand, clusters = others) * 1L
     shared <- tcrossprod(a)
+    # clusters where both genes are ON (in any split, like any_on())
+    on_any <- rowSums(b$on[cand, others, , drop = FALSE], dims = 2) > 0
+    dim(on_any) <- c(length(cand), length(others))
+    shared_on <- tcrossprod(on_any * 1L)
+    # one key that orders by ON-ON off-targets, then ambiguous ones
+    rank_mat <- shared_on * (length(others) + 1) + (shared - shared_on)
+    keep_rank <- function(key, onon) {
+        if (is.null(max_onon)) can_rank(key, limit) else onon <= max_onon
+    }
 
     # Keep only pairs that can make the top `limit` before sorting: there can be
     # millions of pairs, so drop the others before indexing them. Ties break
@@ -574,23 +631,28 @@ pair_offtargets <- function(b, ident, required, min_n, first = NULL,
     # off-targets), then on gene position (alphabetical).
     if (!is.null(first)) {
         idx <- cbind(1L, seq(2, length(cand)))
-        idx <- idx[can_rank(shared[idx], limit), , drop = FALSE]
+        idx <- idx[keep_rank(rank_mat[idx], shared_on[idx]), , drop = FALSE]
     } else {
         pair <- upper.tri(shared)
-        pair[pair] <- can_rank(shared[pair], limit)
+        pair[pair] <- keep_rank(rank_mat[pair], shared_on[pair])
         idx <- which(pair, arr.ind = TRUE)
     }
+    # max_onon can leave no pair
+    if (nrow(idx) == 0) return(empty_pairs())
     vals <- as.integer(shared[idx])
+    vals_on <- as.integer(shared_on[idx])
     single <- diag(shared)
     single_sum <- as.integer(single[idx[, 1]] + single[idx[, 2]])
     sep <- pair_separation(b, ident, cand, idx)
     # missing separation or D sort last among pairs with as many off-targets
-    ord <- head(order(vals, -sep$separation, -sep$ashman_D_lower, single_sum,
+    ord <- head(order(vals_on, vals, -sep$separation, -sep$ashman_D_lower, single_sum,
         idx[, 1], idx[, 2], method = "radix", na.last = TRUE), limit)
     round2 <- function(x) round(x, 2)
     data.frame(
         gene1 = cand[idx[ord, 1]],
         gene2 = cand[idx[ord, 2]],
+        onon_offtargets = vals_on[ord],
+        ambiguous_offtargets = vals[ord] - vals_on[ord],
         offtargets = vals[ord],
         separation = round2(sep$separation[ord]),
         target_fold = round2(sep$target_fold[ord]),

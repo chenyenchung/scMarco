@@ -11,7 +11,8 @@ pair_offtargets(
   min_n,
   first = NULL,
   limit = 50,
-  genes = b$genes
+  genes = b$genes,
+  max_onon = NULL
 )
 }
 \arguments{
@@ -26,24 +27,34 @@ pair_offtargets(
 
 \item{first}{Optional gene: only pairs containing it are returned.}
 
-\item{limit}{Maximum number of pairs returned.}
+\item{limit}{Maximum number of pairs returned (\code{Inf} for all).}
 
 \item{genes}{Genes to consider (default: every gene of \code{b}).}
+
+\item{max_onon}{Optional number: return every pair with at most this
+many ON-ON off-targets, however many there are, before \code{limit} applies;
+e.g. \verb{max_onon = 0, limit = Inf} gives every pair with no confident
+off-target.}
 }
 \value{
-A data.frame with columns \code{gene1}, \code{gene2}, \code{offtargets},
+A data.frame with columns \code{gene1}, \code{gene2}, \code{onon_offtargets},
+\code{ambiguous_offtargets}, \code{offtargets} (their sum),
 \code{separation}, \code{target_fold}, \code{worst_leak}, \code{ashman_D_lower} (\code{NA}
 without the ranking data) and \code{single_offtargets} (the off-targets of
 each gene on its own, summed), best first.
 }
 \description{
-Ranks pairs of genes that both pass the split criteria in \code{ident} by the
-number of other clusters in which both genes are ON or ambiguous (in any
-split): the off-targets of an intersectional (e.g. split-GAL4)
-combination.
+Ranks pairs of genes that both pass the split criteria in \code{ident} by
+their off-targets, the other clusters an intersectional (e.g. split-GAL4)
+combination would also label: first by the \strong{ON-ON off-targets}
+(\code{onon_offtargets}), clusters where both genes are confidently ON (in some
+split), then by the \strong{ambiguous off-targets} (\code{ambiguous_offtargets}),
+clusters where neither gene is OFF but at least one is only ambiguous. A
+pair whose only off-targets are ambiguous comes before any pair with a
+confident one.
 }
 \details{
-Ties are broken by the binarizer 1.1 ranking data when \code{b} has it (from
+Remaining ties are broken by the binarizer 1.1 ranking data when \code{b} has it (from
 \code{\link[=ds_binarize]{ds_binarize()}} of a dataset binarized with \code{\link[=call_mixture]{call_mixture()}} tables):
 first by \strong{separation}, the pair's target strength minus its worst leak,
 in log2 fold over ambient RNA (log2((UMIs + 1) / (expected ambient UMIs +
